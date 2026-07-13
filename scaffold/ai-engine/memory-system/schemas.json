@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProjectJannahHierarchicalMemoryNode",
+  "type": "object",
+  "description": "Represents a point or document indexed inside Qdrant vector store representing a piece of cognitive personal memory.",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the memory chunk."
+    },
+    "userId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "User identifier for multi-user context boundary."
+    },
+    "domain": {
+      "type": "string",
+      "enum": ["Deen", "Family", "Health", "Wealth", "Career", "Personal"],
+      "description": "The specific life domain this memory node corresponds to."
+    },
+    "content": {
+      "type": "string",
+      "description": "The raw contextual fact, habit log, statement, or observation."
+    },
+    "cognitiveLevel": {
+      "type": "string",
+      "enum": ["ShortTerm", "TacticalBuffer", "LongTermAnchor"],
+      "description": "Memory decay categorization."
+    },
+    "weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1.0,
+      "description": "Importance weight multiplier used for priority context engineering."
+    },
+    "decayRate": {
+      "type": "string",
+      "enum": ["static", "linear", "exponential"],
+      "description": "How the memory weight reduces over days of inactivity."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastRecalledAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["id", "userId", "domain", "content", "cognitiveLevel", "weight", "decayRate", "createdAt"]
+}

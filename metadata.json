@@ -1,0 +1,6 @@
+{
+  "name": "LifeOS",
+  "description": "Enterprise-grade Foundation Scaffold and Control Center for Project Jannah, a comprehensive AI-powered Life Operating System.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

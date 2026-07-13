@@ -1,0 +1,70 @@
+{
+  "mcpServers": {
+    "project-jannah-mssql-connector": {
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "./backend/src/LifeOS.WebApi/LifeOS.WebApi.csproj",
+        "--mcp-mode"
+      ],
+      "env": {
+        "CONNECTION_STRING": "Server=localhost,1433;Database=LifeOS;User Id=sa;Password=YourSecurePassword123!;TrustServerCertificate=True"
+      },
+      "tools": [
+        {
+          "name": "query_database_schema",
+          "description": "Inspects SQL Server database structures to formulate exact CQRS mapping specifications.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "dispatch_cqrs_command",
+          "description": "Executes a write operation command on the life database via the ASP.NET MediatR pipeline.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "commandName": { "type": "string", "description": "Fully qualified command namespace (e.g. LifeOS.Application.Features.Salah.Commands.LogSalahCommand)" },
+              "payload": { "type": "object", "description": "Serialized JSON parameter arguments matchable to the command properties." }
+            },
+            "required": ["commandName", "payload"]
+          }
+        }
+      ]
+    },
+    "project-jannah-qdrant-mcp": {
+      "command": "node",
+      "args": ["./dist/qdrant-mcp.js"],
+      "tools": [
+        {
+          "name": "semantic_search_memories",
+          "description": "Queries the Qdrant Vector database using dense cosine similarity to pull past personal history and goals.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": { "type": "string", "description": "The natural language search term or concept." },
+              "domain": { "type": "string", "description": "Optional filter domain (Deen, Family, Health, Wealth, Career, Personal)." },
+              "limit": { "type": "integer", "default": 5 }
+            },
+            "required": ["query"]
+          }
+        },
+        {
+          "name": "upsert_cognitive_memory",
+          "description": "Stores a fresh structured memory block into the vector space.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "domain": { "type": "string" },
+              "content": { "type": "string" },
+              "tags": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["domain", "content"]
+          }
+        }
+      ]
+    }
+  }
+}
