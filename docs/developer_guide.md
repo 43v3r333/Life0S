@@ -116,3 +116,34 @@ Our vertical slice integrates full **Structured Logging** and **Audit Trails**:
 - Every command logs its transactional lifecycle.
 - Changes to critical goal parameters append records directly to the retrospective audit log.
 - Cache misses and hits are recorded in real-time, displaying caching efficiency metrics.
+
+## Runtime configuration and secret handling
+
+LifeOS starts in development with optional external integrations disabled when provider credentials are absent. The default in-memory vault is intentionally empty except for environment-provided values explicitly loaded by server configuration.
+
+Required production variables:
+
+- `NODE_ENV=production`
+- `APP_URL`
+
+Optional integration variables:
+
+- `GEMINI_API_KEY`
+- `GITHUB_TOKEN`
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `MICROSOFT_TOKEN`
+- `GOOGLE_TOKEN`
+- `DATABASE_URL`
+- `SMTP_URL`
+
+Do not commit real API keys, OAuth tokens, database credentials, or SMTP credentials. Vault APIs expose provider presence only and must never echo secret prefixes or connection strings to browser clients.
+
+## FinanceOS Zakah route semantics
+
+FinanceOS separates read-only previews from persisted calculations:
+
+- `GET /finance/ledgers/{ledgerId}/zakah/preview` computes Zakah due without writing history, audit records, or events.
+- `POST /finance/ledgers/{ledgerId}/zakah/calculations` records an idempotent Zakah calculation. Include an `idempotencyKey` body field or `Idempotency-Key` header to prevent duplicate history records on retry.
+
+The legacy `GET /finance/ledgers/{ledgerId}/zakah` route is retained as a deprecated read-only preview route for compatibility.

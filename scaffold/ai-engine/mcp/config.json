@@ -9,7 +9,7 @@
         "--mcp-mode"
       ],
       "env": {
-        "CONNECTION_STRING": "Server=localhost,1433;Database=LifeOS;User Id=sa;Password=YourSecurePassword123!;TrustServerCertificate=True"
+        "CONNECTION_STRING": "${DATABASE_URL}"
       },
       "tools": [
         {

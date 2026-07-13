@@ -7,6 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 import { initDb, saveDb, Goal } from "./server/db.js";
+import { createSafeVaultState, loadRuntimeConfiguration, toVaultStatus, validateRuntimeConfiguration } from "./server/config.js";
 import { cacheStore } from "./server/cache.js";
 import { qdrantStore } from "./server/qdrant.js";
 import { eventBus } from "./server/eventBus.js";
@@ -16,6 +17,8 @@ import { initFinanceOSModule } from "./src/modules/FinanceOS/FinanceOSModule.js"
 import { financeRouter } from "./src/modules/FinanceOS/API/FinanceController.js";
 
 dotenv.config();
+const runtimeConfiguration = loadRuntimeConfiguration();
+validateRuntimeConfiguration(runtimeConfiguration);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,16 +31,7 @@ let state = {
     { id: "sess_2", device: "iPhone 15 Pro Max", ipAddress: "82.14.99.112", location: "Makkah, Saudi Arabia", lastActive: "12 mins ago", isCurrent: false },
     { id: "sess_3", device: "iPad Pro (M4)", ipAddress: "192.168.1.25", location: "London, UK", lastActive: "3 days ago", isCurrent: false }
   ],
-  vault: {
-    openaiKey: "sk-proj-43f9a721b0cd99e2f41bcde99a",
-    geminiKey: process.env.GEMINI_API_KEY || "",
-    anthropicKey: "sk-ant-99f8b76a111cd9a2ee99f8",
-    githubToken: "ghp_JannahCoreSecuredToken43E",
-    microsoftToken: "MSFT-SEC-991A41BFEECE99112",
-    googleToken: "G-OAUTH-38F92A1D0B9C",
-    dbConnectionString: "Server=tcp:sqlserver.io,1433;Database=LifeOS_Prod;User ID=jannah_admin;Password=[Encrypted]",
-    smtpConnectionString: "smtps://ethan:[Encrypted]@smtp.mailtrap.io:465"
-  },
+  vault: createSafeVaultState(runtimeConfiguration),
   scores: {
     overall: 88,
     faith: 82,
@@ -1241,18 +1235,8 @@ async function startServer() {
 
   // 3. Vault & Secrets APIs
   app.get("/api/vault", (req, res) => {
-    // Send masked values to protect real API keys on the frontend
-    const maskedVault = {
-      openaiKey: state.vault.openaiKey ? "[Masked] " + state.vault.openaiKey.substring(0, 10) + "..." : "",
-      geminiKey: state.vault.geminiKey ? "[Masked] " + state.vault.geminiKey.substring(0, 10) + "..." : "",
-      anthropicKey: state.vault.anthropicKey ? "[Masked] " + state.vault.anthropicKey.substring(0, 10) + "..." : "",
-      githubToken: state.vault.githubToken ? "[Masked] " + state.vault.githubToken.substring(0, 4) + "..." : "",
-      microsoftToken: state.vault.microsoftToken ? "[Masked]" : "",
-      googleToken: state.vault.googleToken ? "[Masked]" : "",
-      dbConnectionString: "Server=tcp:sqlserver.io,1433;Database=LifeOS_Prod;User ID=jannah_admin;Password=[Encrypted]",
-      smtpConnectionString: "smtps://ethan:[Encrypted]@smtp.mailtrap.io:465"
-    };
-    res.json(maskedVault);
+    // Return provider presence only; never echo secret prefixes or connection strings.
+    res.json(toVaultStatus(state.vault));
   });
 
   app.post("/api/vault/save", (req, res) => {

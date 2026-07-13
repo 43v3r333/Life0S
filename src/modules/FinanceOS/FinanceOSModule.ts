@@ -11,6 +11,7 @@ import { ReconcileTransactionsCommand } from "./Application/Commands/ReconcileTr
 import { ReconcileTransactionsHandler } from "./Application/Commands/ReconcileTransactions/ReconcileTransactionsHandler.js";
 import { CalculateZakahQuery } from "./Application/Queries/CalculateZakah/CalculateZakahQuery.js";
 import { CalculateZakahHandler } from "./Application/Queries/CalculateZakah/CalculateZakahHandler.js";
+import { RecordZakahCalculationHandler } from "./Application/Commands/RecordZakahCalculation/RecordZakahCalculationHandler.js";
 import { GetPortfolioValuationQuery } from "./Application/Queries/GetPortfolioValuation/GetPortfolioValuationQuery.js";
 import { GetPortfolioValuationHandler } from "./Application/Queries/GetPortfolioValuation/GetPortfolioValuationHandler.js";
 import { GetLedgerSummaryQuery } from "./Application/Queries/GetLedgerSummary/GetLedgerSummaryQuery.js";
@@ -25,6 +26,7 @@ export function initFinanceOSModule(): void {
   mediator.registerHandler<any, any>("PostJournalEntryCommand", new PostJournalEntryHandler());
   mediator.registerHandler<any, any>("ImportBankStatementCommand", new ImportBankStatementHandler());
   mediator.registerHandler<any, any>("ReconcileTransactionsCommand", new ReconcileTransactionsHandler());
+  mediator.registerHandler<any, any>("RecordZakahCalculationCommand", new RecordZakahCalculationHandler());
 
   // Register Queries
   mediator.registerHandler<any, any>("CalculateZakahQuery", new CalculateZakahHandler());

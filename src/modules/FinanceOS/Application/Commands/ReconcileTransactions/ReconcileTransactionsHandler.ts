@@ -4,15 +4,51 @@ import { ReconcileTransactionsCommand } from "./ReconcileTransactionsCommand.js"
 import { auditLedger } from "../../../../../sdk/audit.js";
 import { integrationEventBus } from "../../../../../sdk/events.js";
 import { getDb, saveDb } from "../../../../../../server/db.js";
+import { JournalEntryRepository, LedgerRepository } from "../../../Infrastructure/Persistence/FinanceRepositories.js";
+
+interface StatementImportRecord extends Record<string, unknown> {
+  id: string;
+  statementLineId?: string;
+  tenantId?: string;
+  ledgerId?: string;
+  reconciled?: boolean;
+  matchedJournalEntryId?: string;
+}
 
 export class ReconcileTransactionsHandler implements IRequestHandler<ReconcileTransactionsCommand, Result<void>> {
   public async handle(request: ReconcileTransactionsCommand): Promise<Result<void>> {
     try {
       console.log(`[APPLICATION] [COMMAND] Reconciling statement line '${request.statementLineId}' with journal entry '${request.journalEntryId}'`);
 
+      const ledgerRepo = new LedgerRepository(request.tenantId);
+      const ledger = await ledgerRepo.getLedgerById(request.ledgerId);
+      if (!ledger) {
+        return Result.failure({
+          type: "https://projectjannah.io/errors/not-found",
+          title: "Ledger Not Found",
+          status: 404,
+          detail: `Ledger with ID '${request.ledgerId}' was not found in the current tenant context.`
+        });
+      }
+
+      const journalRepo = new JournalEntryRepository(request.tenantId);
+      const journal = await journalRepo.getJournalById(request.journalEntryId);
+      if (!journal || journal.ledgerId !== request.ledgerId) {
+        return Result.failure({
+          type: "https://projectjannah.io/errors/not-found",
+          title: "Journal Entry Not Found",
+          status: 404,
+          detail: `Journal entry with ID '${request.journalEntryId}' was not found in the current ledger context.`
+        });
+      }
+
       const db = getDb();
-      const list = db.statementImports || [];
-      const item = list.find((i: any) => i.id === request.statementLineId);
+      const list = (db.statementImports || []) as StatementImportRecord[];
+      const item = list.find(i =>
+        (i.statementLineId === request.statementLineId || i.id === request.statementLineId) &&
+        i.tenantId === request.tenantId &&
+        i.ledgerId === request.ledgerId
+      );
 
       if (!item) {
         return Result.failure({
@@ -32,12 +68,10 @@ export class ReconcileTransactionsHandler implements IRequestHandler<ReconcileTr
         });
       }
 
-      // Perform state update
       item.reconciled = true;
       item.matchedJournalEntryId = request.journalEntryId;
       await saveDb();
 
-      // Audit tracking
       await auditLedger.logChange({
         tenantId: request.tenantId,
         correlationId: request.correlationId,
@@ -49,7 +83,6 @@ export class ReconcileTransactionsHandler implements IRequestHandler<ReconcileTr
         result: "SUCCESS"
       });
 
-      // Dispatch integration event
       await integrationEventBus.publish({
         id: "evt_rec_" + Math.random().toString(36).substr(2, 9),
         eventName: "TransactionReconciled",
@@ -65,13 +98,14 @@ export class ReconcileTransactionsHandler implements IRequestHandler<ReconcileTr
       });
 
       return Result.ok();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred during reconciliation matching.";
       console.error(`[APPLICATION] [COMMAND FAILURE] ReconcileTransactions failed:`, err);
       return Result.failure({
         type: "https://projectjannah.io/errors/command-failed",
         title: "Reconciliation Failed",
         status: 500,
-        detail: err.message || "An unexpected error occurred during reconciliation matching."
+        detail: message
       });
     }
   }

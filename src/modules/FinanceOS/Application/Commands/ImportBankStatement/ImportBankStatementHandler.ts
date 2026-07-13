@@ -1,12 +1,18 @@
+import { createHash } from "crypto";
 import { IRequestHandler } from "../../../../../sdk/cqrs.js";
 import { Result } from "../../../../../sdk/result.js";
 import { ImportBankStatementCommand } from "./ImportBankStatementCommand.js";
 import { aiGateway } from "../../../../../sdk/ai.js";
 import { auditLedger } from "../../../../../sdk/audit.js";
 import { getDb, saveDb } from "../../../../../../server/db.js";
+import { LedgerRepository } from "../../../Infrastructure/Persistence/FinanceRepositories.js";
 
 interface ClassifiedTransaction {
   id: string;
+  statementLineId: string;
+  tenantId: string;
+  ledgerId: string;
+  sourceFingerprint: string;
   date: string;
   description: string;
   amount: number;
@@ -14,12 +20,35 @@ interface ClassifiedTransaction {
   purifiedAmount: number;
   category: string;
   reconciled: boolean;
+  importedAt: string;
+  correlationId: string;
+}
+
+interface ClassificationOutput {
+  isHalal?: boolean;
+  category?: string;
+  purificationAmount?: number;
+}
+
+function createStatementLineIdentity(tenantId: string, ledgerId: string, row: string): string {
+  return createHash("sha256").update(`${tenantId}|${ledgerId}|${row}`).digest("hex");
 }
 
 export class ImportBankStatementHandler implements IRequestHandler<ImportBankStatementCommand, Result<string[]>> {
   public async handle(request: ImportBankStatementCommand): Promise<Result<string[]>> {
     try {
       console.log(`[APPLICATION] [COMMAND] Importing bank statement for ledger: ${request.ledgerId}`);
+
+      const ledgerRepo = new LedgerRepository(request.tenantId);
+      const ledger = await ledgerRepo.getLedgerById(request.ledgerId);
+      if (!ledger) {
+        return Result.failure({
+          type: "https://projectjannah.io/errors/not-found",
+          title: "Ledger Not Found",
+          status: 404,
+          detail: `Ledger with ID '${request.ledgerId}' was not found in the current tenant context.`
+        });
+      }
       
       const lines = request.csvContent.split("\n").map(l => l.trim()).filter(l => l.length > 0);
       if (lines.length === 0) {
@@ -31,7 +60,6 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
         });
       }
 
-      // Skip CSV header if exists
       const firstLine = lines[0].toLowerCase();
       const hasHeader = firstLine.includes("date") || firstLine.includes("desc") || firstLine.includes("amount");
       const transactionRows = hasHeader ? lines.slice(1) : lines;
@@ -39,6 +67,7 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
       const importedIds: string[] = [];
       const db = getDb();
       db.statementImports = db.statementImports || [];
+      const existingImports = db.statementImports as ClassifiedTransaction[];
 
       for (const row of transactionRows) {
         const parts = row.split(",").map(p => p.trim());
@@ -49,9 +78,19 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
         const amount = parseFloat(parts[2]);
         if (isNaN(amount)) continue;
 
-        const txId = "st_" + Math.random().toString(36).substr(2, 9);
+        const sourceFingerprint = createStatementLineIdentity(request.tenantId, request.ledgerId, row);
+        const duplicate = existingImports.find(existing =>
+          existing.tenantId === request.tenantId &&
+          existing.ledgerId === request.ledgerId &&
+          existing.sourceFingerprint === sourceFingerprint
+        );
+        if (duplicate) {
+          importedIds.push(duplicate.statementLineId || duplicate.id);
+          continue;
+        }
 
-        // Stage 4 Model routing - classify description via Shared SDK AI Gateway
+        const txId = "st_" + sourceFingerprint.substring(0, 16);
+
         let isHalal = true;
         let purifiedAmount = 0;
         let category = "Operating Expense";
@@ -69,17 +108,16 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
 
           const classificationPrompt = `Classify this business bank transaction for Shariah compliance and corporate accounting. Date: ${date}, Description: ${description}, Amount: ${amount}. Evaluate if there is conventional interest (Riba) requiring purification.`;
           
-          const aiResult = await aiGateway.executePipeline<any>(classificationPrompt, {
+          const aiResult = await aiGateway.executePipeline<ClassificationOutput>(classificationPrompt, {
             systemInstruction: "You are an expert Islamic Fintech auditor. Analyze transaction descriptions and classify them into standard accounts: 'Business Income', 'Software Expense', 'Interest Income', 'Travel Expense', 'Hardware Expense'. If it is Interest Income, set 'isHalal' to false, 'category' to 'Interest Income', and 'purificationAmount' to the exact transaction amount.",
             jsonSchema: schema
           });
 
           if (aiResult.validationSuccess && aiResult.structuredOutput) {
-            isHalal = aiResult.structuredOutput.isHalal;
+            isHalal = aiResult.structuredOutput.isHalal !== false;
             purifiedAmount = aiResult.structuredOutput.purificationAmount || 0;
             category = aiResult.structuredOutput.category || "Operating Expense";
           } else {
-            // Fallback heuristics
             const lowerDesc = description.toLowerCase();
             if (lowerDesc.includes("interest") || lowerDesc.includes("yield") || lowerDesc.includes("riba")) {
               isHalal = false;
@@ -89,7 +127,7 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
               category = "Business Income";
             }
           }
-        } catch (err) {
+        } catch (err: unknown) {
           console.warn("[IMPORT STATEMENT] AI evaluation failed, falling back to heuristic parsing:", err);
           const lowerDesc = description.toLowerCase();
           if (lowerDesc.includes("interest") || lowerDesc.includes("yield") || lowerDesc.includes("riba")) {
@@ -101,22 +139,27 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
 
         const txRecord: ClassifiedTransaction = {
           id: txId,
+          statementLineId: txId,
+          tenantId: request.tenantId,
+          ledgerId: request.ledgerId,
+          sourceFingerprint,
           date,
           description,
           amount,
           isHalal,
           purifiedAmount,
           category,
-          reconciled: false
+          reconciled: false,
+          importedAt: new Date().toISOString(),
+          correlationId: request.correlationId
         };
 
-        db.statementImports.push(txRecord);
+        existingImports.push(txRecord);
         importedIds.push(txId);
       }
 
       await saveDb();
 
-      // Audit log the import activity
       await auditLedger.logChange({
         tenantId: request.tenantId,
         correlationId: request.correlationId,
@@ -129,13 +172,14 @@ export class ImportBankStatementHandler implements IRequestHandler<ImportBankSta
       });
 
       return Result.success(importedIds);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred during CSV parsing.";
       console.error(`[APPLICATION] [COMMAND FAILURE] ImportBankStatement failed:`, err);
       return Result.failure({
         type: "https://projectjannah.io/errors/command-failed",
         title: "CSV Import Failed",
         status: 500,
-        detail: err.message || "An unexpected error occurred during CSV parsing."
+        detail: message
       });
     }
   }
