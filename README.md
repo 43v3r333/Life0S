@@ -18,3 +18,13 @@ View your app in AI Studio: https://ai.studio/apps/bf9d82a2-24c7-47bf-8733-cb910
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## API documentation
+
+The complete HTTP surface, request conventions, endpoint catalog, FinanceOS examples,
+and known compatibility routes are documented in [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+The running server also exposes its currently registered OpenAPI document at
+`GET /api/openapi-spec`.
+
+Run `npm run docs:check` whenever routes change. The check fails if an Express route
+is missing from the API reference.
