@@ -7,6 +7,7 @@ import { PostJournalEntryCommand } from "../Application/Commands/PostJournalEntr
 import { ImportBankStatementCommand } from "../Application/Commands/ImportBankStatement/ImportBankStatementCommand.js";
 import { ReconcileTransactionsCommand } from "../Application/Commands/ReconcileTransactions/ReconcileTransactionsCommand.js";
 import { CalculateZakahQuery } from "../Application/Queries/CalculateZakah/CalculateZakahQuery.js";
+import { RecordZakahCalculationCommand } from "../Application/Commands/RecordZakahCalculation/RecordZakahCalculationCommand.js";
 import { GetPortfolioValuationQuery } from "../Application/Queries/GetPortfolioValuation/GetPortfolioValuationQuery.js";
 import { GetLedgerSummaryQuery } from "../Application/Queries/GetLedgerSummary/GetLedgerSummaryQuery.js";
 
@@ -88,8 +89,8 @@ financeRouter.get("/ledgers/:ledgerId/summary", async (req: Request, res: Respon
   res.json(result.value);
 });
 
-// 7. Calculate Zakah Liability
-financeRouter.get("/ledgers/:ledgerId/zakah", async (req: Request, res: Response) => {
+// 7. Preview Zakah Liability (pure query; no history, audit, or event writes)
+financeRouter.get("/ledgers/:ledgerId/zakah/preview", async (req: Request, res: Response) => {
   const { ledgerId } = req.params;
   const goldPrice = req.query.goldPrice ? parseFloat(req.query.goldPrice as string) : 77.0;
   const silverPrice = req.query.silverPrice ? parseFloat(req.query.silverPrice as string) : 0.95;
@@ -102,6 +103,41 @@ financeRouter.get("/ledgers/:ledgerId/zakah", async (req: Request, res: Response
     return res.status(result.error?.status || 400).json(result.error);
   }
   res.json(result.value);
+});
+
+// Backward-compatible preview route. Deprecated: use /zakah/preview for pure query semantics.
+financeRouter.get("/ledgers/:ledgerId/zakah", async (req: Request, res: Response) => {
+  const { ledgerId } = req.params;
+  const goldPrice = req.query.goldPrice ? parseFloat(req.query.goldPrice as string) : 77.0;
+  const silverPrice = req.query.silverPrice ? parseFloat(req.query.silverPrice as string) : 0.95;
+  const tenantId = (req.query.tenantId as string) || "system-default";
+
+  const query = new CalculateZakahQuery(ledgerId, goldPrice, silverPrice, true, tenantId);
+  const result = await mediator.send<any>("CalculateZakahQuery", query);
+
+  if (result.isFailure) {
+    return res.status(result.error?.status || 400).json(result.error);
+  }
+  res.setHeader("Deprecation", "true");
+  res.setHeader("Link", '</finance/ledgers/{ledgerId}/zakah/preview>; rel="successor-version"');
+  res.json(result.value);
+});
+
+// 7b. Persist Zakah Liability (command with idempotency)
+financeRouter.post("/ledgers/:ledgerId/zakah/calculations", async (req: Request, res: Response) => {
+  const { ledgerId } = req.params;
+  const goldPrice = req.body.goldPrice ? parseFloat(req.body.goldPrice) : 77.0;
+  const silverPrice = req.body.silverPrice ? parseFloat(req.body.silverPrice) : 0.95;
+  const tenantId = req.body.tenantId || "system-default";
+  const idempotencyKey = req.body.idempotencyKey || req.header("Idempotency-Key") || "";
+
+  const command = new RecordZakahCalculationCommand(ledgerId, goldPrice, silverPrice, idempotencyKey, tenantId);
+  const result = await mediator.send<any>("RecordZakahCalculationCommand", command);
+
+  if (result.isFailure) {
+    return res.status(result.error?.status || 400).json(result.error);
+  }
+  res.status(result.value.idempotentReplay ? 200 : 201).json(result.value);
 });
 
 // 8. Retrieve Portfolio Valuation Screen
@@ -151,10 +187,19 @@ openApiGenerator.registerEndpoint({
 });
 
 openApiGenerator.registerEndpoint({
-  path: "/finance/ledgers/{ledgerId}/zakah",
+  path: "/finance/ledgers/{ledgerId}/zakah/preview",
   method: "get",
-  summary: "Calculate Zakah Due",
-  description: "Computes active wealth-tax liability using live metal Nisab parameters and account balances.",
+  summary: "Preview Zakah Due",
+  description: "Computes active wealth-tax liability without persisting history, audit records, or integration events.",
+  tags: ["FinanceOS"],
+  responseSchemaName: "ZakahBreakdown"
+});
+
+openApiGenerator.registerEndpoint({
+  path: "/finance/ledgers/{ledgerId}/zakah/calculations",
+  method: "post",
+  summary: "Record Zakah Calculation",
+  description: "Computes and persists one idempotent Zakah calculation with audit metadata and integration event publication.",
   tags: ["FinanceOS"],
   responseSchemaName: "ZakahBreakdown"
 });

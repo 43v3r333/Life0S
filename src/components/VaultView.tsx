@@ -152,7 +152,7 @@ export default function VaultView() {
                   type={revealedFields.openaiKey ? "text" : "password"}
                   value={getMaskedValue("openaiKey", vault.openaiKey)}
                   onChange={(e) => handleFieldChange("openaiKey", e.target.value)}
-                  placeholder="sk-proj-••••••••"
+                  placeholder="OpenAI key configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button
@@ -173,7 +173,7 @@ export default function VaultView() {
                   type={revealedFields.anthropicKey ? "text" : "password"}
                   value={getMaskedValue("anthropicKey", vault.anthropicKey)}
                   onChange={(e) => handleFieldChange("anthropicKey", e.target.value)}
-                  placeholder="sk-ant-••••••••"
+                  placeholder="Anthropic key configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button
@@ -203,7 +203,7 @@ export default function VaultView() {
                   type={revealedFields.googleToken ? "text" : "password"}
                   value={getMaskedValue("googleToken", vault.googleToken)}
                   onChange={(e) => handleFieldChange("googleToken", e.target.value)}
-                  placeholder="G-OAUTH-••••••••"
+                  placeholder="Google token configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button
@@ -224,7 +224,7 @@ export default function VaultView() {
                   type={revealedFields.microsoftToken ? "text" : "password"}
                   value={getMaskedValue("microsoftToken", vault.microsoftToken)}
                   onChange={(e) => handleFieldChange("microsoftToken", e.target.value)}
-                  placeholder="MSFT-SEC-••••••••"
+                  placeholder="Microsoft token configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button
@@ -245,7 +245,7 @@ export default function VaultView() {
                   type={revealedFields.githubToken ? "text" : "password"}
                   value={getMaskedValue("githubToken", vault.githubToken)}
                   onChange={(e) => handleFieldChange("githubToken", e.target.value)}
-                  placeholder="ghp_••••••••"
+                  placeholder="GitHub token configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button
@@ -296,7 +296,7 @@ export default function VaultView() {
                   type={revealedFields.smtpConnectionString ? "text" : "password"}
                   value={getMaskedValue("smtpConnectionString", vault.smtpConnectionString)}
                   onChange={(e) => handleFieldChange("smtpConnectionString", e.target.value)}
-                  placeholder="smtps://user:pass@smtp.mailtrap.io:465"
+                  placeholder="SMTP URL configured externally"
                   className="w-full bg-white border border-stone-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 text-xs pr-8"
                 />
                 <button

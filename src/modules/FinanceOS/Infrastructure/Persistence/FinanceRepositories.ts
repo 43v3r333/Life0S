@@ -5,6 +5,8 @@ import { JournalEntry } from "../../Domain/Entities/JournalEntry.js";
 import { JournalLine } from "../../Domain/ValueObjects/JournalLine.js";
 import { getDb, saveDb } from "../../../../../server/db.js";
 
+type StoredRecord = Record<string, unknown> & { id: string; tenantId: string; isDeleted?: boolean };
+
 export class LedgerRepository extends Repository<any> {
   constructor(tenantId: string = "system-default") {
     super("ledgers", tenantId);
@@ -12,49 +14,52 @@ export class LedgerRepository extends Repository<any> {
 
   public async getLedgerById(id: string): Promise<Ledger | null> {
     const rawLedgers = this.getCollection();
-    const raw = rawLedgers.find(l => l.id === id && !l.isDeleted);
+    const raw = rawLedgers.find(l => l.id === id && l.tenantId === this._tenantId && !l.isDeleted);
     if (!raw) return null;
 
     // Load related accounts from accounts database collection
     const db = getDb();
     const rawAccounts = db.accounts || [];
     const ledgerAccounts = rawAccounts
-      .filter((a: any) => a.ledgerId === id && !a.isDeleted)
-      .map((a: any) => new Account(
-        a.id,
-        a.tenantId,
-        a.code,
-        a.name,
+      .filter((a: StoredRecord) => a.ledgerId === id && a.tenantId === this._tenantId && !a.isDeleted)
+      .map((a: StoredRecord) => new Account(
+        String(a.id),
+        String(a.tenantId),
+        String(a.code),
+        String(a.name),
         a.type as AccountType,
-        a.parentId,
-        a.balance,
-        a.isHalal,
-        a.purifiedAmount,
-        a.createdBy,
-        a.modifiedBy,
-        a.createdUtc,
-        a.modifiedUtc,
-        a.version
+        a.parentId as string | undefined,
+        Number(a.balance || 0),
+        a.isHalal !== false,
+        Number(a.purifiedAmount || 0),
+        String(a.createdBy || "System"),
+        String(a.modifiedBy || "System"),
+        String(a.createdUtc || new Date().toISOString()),
+        String(a.modifiedUtc || new Date().toISOString()),
+        Number(a.version || 1)
       ));
 
     return new Ledger(
-      raw.id,
-      raw.tenantId,
-      raw.name,
-      raw.currency,
-      raw.status,
+      String(raw.id),
+      String(raw.tenantId),
+      String(raw.name),
+      String(raw.currency),
+      raw.status as "Active" | "Archived",
       ledgerAccounts,
-      raw.createdBy,
-      raw.modifiedBy,
-      raw.createdUtc,
-      raw.modifiedUtc,
-      raw.version
+      String(raw.createdBy || "System"),
+      String(raw.modifiedBy || "System"),
+      String(raw.createdUtc || new Date().toISOString()),
+      String(raw.modifiedUtc || new Date().toISOString()),
+      Number(raw.version || 1)
     );
   }
 
   public async saveLedger(ledger: Ledger): Promise<void> {
+    if (ledger.tenantId !== this._tenantId) {
+      throw new Error("[FINANCE REPOSITORY] Tenant scope violation while saving ledger.");
+    }
     const rawLedgers = this.getCollection();
-    const idx = rawLedgers.findIndex(l => l.id === ledger.id);
+    const idx = rawLedgers.findIndex(l => l.id === ledger.id && l.tenantId === this._tenantId);
     const serializedLedger = {
       id: ledger.id,
       tenantId: ledger.tenantId,
@@ -81,7 +86,10 @@ export class LedgerRepository extends Repository<any> {
     const allAccounts = db.accounts || [];
     
     for (const acc of ledger.accounts) {
-      const accIdx = allAccounts.findIndex((a: any) => a.id === acc.id);
+      if (acc.tenantId !== this._tenantId) {
+        throw new Error("[FINANCE REPOSITORY] Tenant scope violation while saving account.");
+      }
+      const accIdx = allAccounts.findIndex((a: StoredRecord) => a.id === acc.id && a.tenantId === this._tenantId);
       const serializedAccount = {
         id: acc.id,
         ledgerId: ledger.id,
@@ -120,30 +128,36 @@ export class JournalEntryRepository extends Repository<any> {
 
   public async getJournalById(id: string): Promise<JournalEntry | null> {
     const rawCollection = this.getCollection();
-    const raw = rawCollection.find(j => j.id === id && !j.isDeleted);
+    const raw = rawCollection.find(j => j.id === id && j.tenantId === this._tenantId && !j.isDeleted);
     if (!raw) return null;
 
-    const lines = (raw.lines || []).map((l: any) => new JournalLine(l.accountId, l.type, l.amount));
+    const lines = ((raw.lines as { accountId: string; type: "Debit" | "Credit"; amount: number }[] | undefined) || []).map(l => new JournalLine(l.accountId, l.type, l.amount));
 
-    return new JournalEntry(
-      raw.id,
-      raw.tenantId,
-      raw.ledgerId,
-      raw.description,
+    return JournalEntry.rehydrate({
+      id: raw.id,
+      tenantId: raw.tenantId,
+      ledgerId: String(raw.ledgerId),
+      description: String(raw.description),
       lines,
-      raw.isPurified,
-      raw.signature,
-      raw.createdBy,
-      raw.modifiedBy,
-      raw.createdUtc,
-      raw.modifiedUtc,
-      raw.version
-    );
+      isPurified: raw.isPurified === true,
+      signature: typeof raw.signature === "string" ? raw.signature : undefined,
+      isPosted: raw.isPosted === true,
+      postedUtc: typeof raw.postedUtc === "string" ? raw.postedUtc : undefined,
+      createdBy: String(raw.createdBy || "System"),
+      modifiedBy: String(raw.modifiedBy || "System"),
+      createdUtc: String(raw.createdUtc || new Date().toISOString()),
+      modifiedUtc: String(raw.modifiedUtc || new Date().toISOString()),
+      version: Number(raw.version || 1),
+      isDeleted: raw.isDeleted === true
+    });
   }
 
   public async saveJournal(entry: JournalEntry): Promise<void> {
+    if (entry.tenantId !== this._tenantId) {
+      throw new Error("[FINANCE REPOSITORY] Tenant scope violation while saving journal.");
+    }
     const rawCollection = this.getCollection();
-    const idx = rawCollection.findIndex(j => j.id === entry.id);
+    const idx = rawCollection.findIndex(j => j.id === entry.id && j.tenantId === this._tenantId);
     const serialized = {
       id: entry.id,
       tenantId: entry.tenantId,
