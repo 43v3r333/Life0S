@@ -849,8 +849,8 @@ print("Skill published successfully & digitally signed.")
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
-                          <XAxis dataKey="time" stroke="#888888" fontSize={9} fontClassName="font-mono" />
-                          <YAxis stroke="#888888" fontSize={9} fontClassName="font-mono" />
+                          <XAxis dataKey="time" stroke="#888888" fontSize={9} className="font-mono" />
+                          <YAxis stroke="#888888" fontSize={9} className="font-mono" />
                           <Tooltip contentStyle={{ fontSize: "11px", fontFamily: "monospace" }} />
                           <Legend wrapperStyle={{ fontSize: "10px", fontFamily: "monospace" }} />
                           <Area type="monotone" dataKey="Cloud_AI" stroke="#4338ca" fillOpacity={1} fill="url(#cloudGrad)" name="Cloud AI Calls" />

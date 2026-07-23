@@ -5,6 +5,7 @@
 
 import { getDb, saveDb } from "../../server/db.js";
 import { Guid } from "./result.js";
+import { personalProfile } from "../config/personalization.js";
 
 export interface AuditRecord {
   id: string;
@@ -40,7 +41,7 @@ export class AuditLedgerService {
     const record: AuditRecord = {
       id: "audit_" + Guid.newGuid().substring(3, 10),
       timestamp: new Date().toISOString(),
-      user: params.user || db.currentUser || "Ethan",
+      user: params.user || db.currentUser || personalProfile.name,
       tenantId: params.tenantId || "tenant-default-01",
       correlationId: params.correlationId,
       oldValue: params.oldValue ? JSON.parse(JSON.stringify(params.oldValue)) : null,

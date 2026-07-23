@@ -555,7 +555,7 @@ export default function AutonomousIntelligenceView({
                       <div key={key} className="p-4 bg-stone-50 border border-stone-200 rounded-xl font-mono text-xs">
                         <span className="text-[9px] text-stone-400 block uppercase font-bold">{label}</span>
                         <span className="text-lg font-bold text-stone-900 block mt-1">
-                          {typeof value === "number" ? `${value}${key.includes("Score") || key.includes("Rate") || key.includes("Efficiency") ? "%" : ""}` : value}
+                          {typeof value === "number" ? `${value}${key.includes("Score") || key.includes("Rate") || key.includes("Efficiency") ? "%" : ""}` : String(value)}
                         </span>
                       </div>
                     );
@@ -1060,7 +1060,7 @@ export default function AutonomousIntelligenceView({
                     {Object.entries(memoryStats).map(([key, value]) => (
                       <div key={key} className="p-3 bg-stone-50 border border-stone-200 rounded-lg flex justify-between items-center">
                         <span className="text-stone-500 capitalize">{key.replace(/([A-Z])/g, " $1")}</span>
-                        <span className="text-stone-900 font-bold">{value}</span>
+                        <span className="text-stone-900 font-bold">{String(value)}</span>
                       </div>
                     ))}
 

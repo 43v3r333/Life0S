@@ -24,6 +24,8 @@ export interface UserProfile {
     workingHours: string;
     learningPreferences: string;
     aiPersonality: string;
+    compactThreshold?: number;
+    speechEnabled?: boolean;
   };
   notifications: {
     policyViolations: boolean;
@@ -49,12 +51,17 @@ export interface ActiveSession {
 }
 
 export interface SecretVault {
+  nvidiaKey: string;
   openaiKey: string;
   geminiKey: string;
   anthropicKey: string;
   githubToken: string;
   microsoftToken: string;
   googleToken: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  googleRefreshToken: string;
+  googleGrantedScopes: string;
   dbConnectionString: string;
   smtpConnectionString: string;
 }
@@ -179,4 +186,3 @@ export interface IngestionPipelineStatus {
   progress: number; // 0 to 100
   logs: string[];
 }
-

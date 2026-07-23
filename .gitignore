@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+data/
+.test-data/
+.test-auth-data/
+tmp/
+My_LifeOS_Discovery_Workbook.xlsx
+work/

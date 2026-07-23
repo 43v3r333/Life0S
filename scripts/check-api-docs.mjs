@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 const sources = [
   ["server.ts", /app\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g],
   ["src/modules/FinanceOS/API/FinanceController.ts", /financeRouter\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g],
+  ["server/routes/systemRoutes.ts", /router\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g],
+  ["server/routes/searchRoutes.ts", /router\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g],
+  ["server/routes/businessRoutes.ts", /router\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g],
 ];
 
 const docs = await readFile("docs/API_REFERENCE.md", "utf8");
@@ -12,8 +15,10 @@ for (const [file, routePattern] of sources) {
   const source = await readFile(file, "utf8");
   for (const match of source.matchAll(routePattern)) {
     if (match[1] === "*") continue;
-    const route = file.includes("FinanceController")
-      ? `/api/finance${match[1]}`
+    const route = file.includes("FinanceController") ? `/api/finance${match[1]}`
+      : file.includes("systemRoutes") ? `/api/system${match[1]}`
+      : file.includes("searchRoutes") ? `/api/search${match[1] === "/" ? "" : match[1]}`
+      : file.includes("businessRoutes") ? `/api/business${match[1]}`
       : match[1];
     if (!docs.includes(`\`${route}\``)) missing.push(`${file}: ${route}`);
   }

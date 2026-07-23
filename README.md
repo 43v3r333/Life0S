@@ -1,30 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# LifeOS
 
-# Run and deploy your AI Studio app
+LifeOS is a private, local-first personal operating system for finance, planning, daily execution, work, AI assistance, and controlled long-term memory.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/bf9d82a2-24c7-47bf-8733-cb9103a5cb79
+Requirements: Node.js 22 or newer.
 
-## Run Locally
+```bash
+npm install
+npm run setup:auth
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+The development and production server listens on `127.0.0.1:3001`. Build and verify production with:
 
+```bash
+npm run lint
+npm test
+npm run build
+npm run docs:check
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Data and reliability
 
-## API documentation
+- `data/lifeos.sqlite` is the authoritative transactional store.
+- On first upgraded startup, `data/db.json` is copied to a checksum-labelled rollback artifact, imported, and reconciled before SQLite becomes authoritative.
+- Uploaded statements and screenshots remain files under `data/statements`; their metadata, ownership, hash, and analysis state are indexed in SQLite.
+- Backup bundles include a consistent SQLite snapshot, uploaded files, the local vector index, a sanitized compatibility state, and a checksum manifest.
+- Provider credentials are encrypted separately and are never stored in the SQLite application state or ordinary AI prompts.
 
-The complete HTTP surface, request conventions, endpoint catalog, FinanceOS examples,
-and known compatibility routes are documented in [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
-The running server also exposes its currently registered OpenAPI document at
-`GET /api/openapi-spec`.
+Storage health is available at `GET /api/system/storage-status` and can be reconciled with `POST /api/system/storage-verify`.
 
-Run `npm run docs:check` whenever routes change. The check fails if an Express route
-is missing from the API reference.
+## AI behavior
+
+AI answers use current LifeOS records first, relevant confirmed memories second, and recent conversation context last. Source labels and timestamps are attached to grounded responses. Newer authoritative records suppress stale linked memories. Every proposed write requires approval. When NVIDIA or another configured provider is unavailable, deterministic local calculations remain available and are labelled as fallback output.
+
+The Memory screen includes provider diagnostics, domain coverage, stale-memory exclusions, conflicts, and pending proposed actions.
+
+## Private mobile access
+
+1. Run `npm run setup:auth` and configure a private email plus a password of at least 12 characters.
+2. Install ngrok and configure a valid token using `ngrok config add-authtoken YOUR_TOKEN`.
+3. Run `npm run build` and then `npm run mobile`.
+4. Open the HTTPS address printed by ngrok and sign in.
+
+Sessions use HttpOnly cookies and persist in SQLite across normal restarts. Do not share the ngrok URL or expose the port on your router.
+
+## Feature status
+
+- Implemented locally: finance ledgers and imports, bank/account snapshots, debts, goals, tasks, habits, work shifts, conversations, memory, search, backups, authentication, and AI diagnostics.
+- Optional integrations: NVIDIA NIM, OpenAI, Gemini, GitHub, and ngrok. They require user-provided credentials.
+- Retired demonstrations: unused enterprise/demo UI modules are retained only in `archive/legacy-ui` and excluded from production builds.
+
+The complete API catalog is in [docs/API_REFERENCE.md](docs/API_REFERENCE.md). The running server exposes `GET /api/openapi-spec`.

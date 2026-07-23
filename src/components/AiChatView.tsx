@@ -1,322 +1,59 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Send, Sparkles, Pin, Bookmark, Shield, BookOpen, Layers, Info, Download, Trash, ChevronDown, Check, RefreshCw } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Archive, Download, Edit3, MessageSquarePlus, Pin, RefreshCw, Search, Send, Trash } from "lucide-react";
 import { ChatMessage, UserProfile } from "../types";
+import MarkdownMessage from "./MarkdownMessage";
+import AiActionCenter from "./AiActionCenter";
 
-interface AiChatViewProps {
+interface Props {
   userProfile: UserProfile;
   messages: ChatMessage[];
   onSendMessage: (text: string, activeAgent: string) => void;
   sendingMessage: boolean;
   onClearHistory: () => void;
   onAddSignalREvent: (msg: string) => void;
+  conversations: any[];
+  activeConversationId: string | null;
+  onCreateConversation: () => void;
+  onSelectConversation: (id: string) => void;
+  onRenameConversation: (id: string) => void;
+  onArchiveConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void;
 }
 
-export default function AiChatView({
-  userProfile,
-  messages,
-  onSendMessage,
-  sendingMessage,
-  onClearHistory,
-  onAddSignalREvent
-}: AiChatViewProps) {
-  const [inputValue, setInputValue] = useState("");
-  const [activeAgent, setActiveAgent] = useState("gabriel_cos");
-  const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
-  const [pinnedCount, setPinnedCount] = useState(0);
-  const [exportSuccess, setExportSuccess] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+export default function AiChatView({ userProfile, messages, onSendMessage, sendingMessage, onClearHistory, onAddSignalREvent, conversations, activeConversationId, onCreateConversation, onSelectConversation, onRenameConversation, onArchiveConversation, onDeleteConversation }: Props) {
+  const [input, setInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [aiStatus, setAiStatus] = useState<any>(null);
+  const [lifeContext, setLifeContext] = useState<any>(null);
+  const [integration, setIntegration] = useState<any>(null);
+  const [mode,setMode]=useState("today"),[folder,setFolder]=useState("all");
+  const bottom = useRef<HTMLDivElement>(null);
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sendingMessage]);
+  useEffect(() => { void fetch("/api/ai/status").then((response) => response.ok ? response.json() : null).then(setAiStatus).catch(() => setAiStatus(null)); }, []);
+  useEffect(() => { void fetch("/api/ai/life-context").then((response) => response.ok ? response.json() : null).then(setLifeContext).catch(() => setLifeContext(null)); }, [messages]);
+  useEffect(() => { void fetch("/api/ai/integration-briefing").then((response) => response.ok ? response.json() : null).then(setIntegration).catch(() => setIntegration(null)); }, [messages]);
 
-  // Auto scroll chat to bottom
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sendingMessage]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim() || sendingMessage) return;
-    onSendMessage(inputValue, activeAgent);
-    setInputValue("");
-  };
-
-  const exportConversation = () => {
-    const formatted = messages
-      .map((m) => `## ${m.role === "user" ? "User" : activeAgent.toUpperCase()}\n\n${m.content}`)
+  const submit = (e: React.FormEvent) => { e.preventDefault(); if (!input.trim() || sendingMessage) return; onSendMessage(input, `lifeos_assistant:${mode}`); setInput(""); };
+  const exportChat = () => {
+    const body = messages
+      .map((m) => `## ${m.role === "user" ? userProfile.name : "LifeOS Assistant"}\n\n${m.content}`)
       .join("\n\n");
-    
-    const blob = new Blob([formatted], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ProjectJannah-Conversation-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    setExportSuccess(true);
-    setTimeout(() => setExportSuccess(false), 2000);
+    const url = URL.createObjectURL(new Blob([body], { type: "text/markdown" }));
+    const a = document.createElement("a"); a.href = url; a.download = `LifeOS-chat-${new Date().toISOString().slice(0, 10)}.md`; a.click(); URL.revokeObjectURL(url);
+    onAddSignalREvent("Chat exported locally.");
   };
 
-  const getAgentLabel = (id: string) => {
-    switch (id) {
-      case "deen_auditor":
-        return "Deen Auditor Agent";
-      case "wealth_architect":
-        return "Wealth Architect Agent";
-      case "health_sentinel":
-        return "Health Sentinel Agent";
-      default:
-        return "Gabriel (Chief of Staff)";
-    }
-  };
-
-  const getAgentDescription = (id: string) => {
-    switch (id) {
-      case "deen_auditor":
-        return "Specializes in prayer times, quran, halal principles and islamic jurisprudence consistency audits.";
-      case "wealth_architect":
-        return "Specializes in halal financial portfolios, double-entry ledgers, and budget compliance boundaries.";
-      case "health_sentinel":
-        return "Specializes in athletic metrics, bio-telemetry, sleep, and HRV recovery curve analysis.";
-      default:
-        return "The primary coordinator orchestrating all life domains. Allocates focus indices and enforces system policies.";
-    }
-  };
-
-  const activeMsg = messages.find((m) => m.id === selectedMsgId) || messages[messages.length - 1];
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto items-stretch">
-      
-      {/* Left Col: Chat Space (Cols 1-3) */}
-      <div className="lg:col-span-3 bg-white rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-between min-h-[580px] overflow-hidden">
-        
-        {/* Chat Header */}
-        <div className="border-b border-stone-150 px-6 py-4 flex items-center justify-between bg-stone-50 shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-            <div>
-              <h3 className="text-sm font-semibold text-stone-950 flex items-center space-x-2">
-                <span>{getAgentLabel(activeAgent)}</span>
-              </h3>
-              <p className="text-[10px] text-stone-500 font-mono">ROLE DOCK ACTIVE • MODEL: gemini-3.5-flash</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2 font-mono text-[10px]">
-            <button
-              onClick={exportConversation}
-              className="px-2.5 py-1.5 border border-stone-200 rounded-lg hover:bg-stone-100 bg-white transition flex items-center space-x-1.5 text-stone-600"
-              title="Export as Markdown"
-            >
-              {exportSuccess ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Download className="h-3.5 w-3.5" />}
-              <span>{exportSuccess ? "EXPORTED" : "EXPORT"}</span>
-            </button>
-            <button
-              onClick={onClearHistory}
-              className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 hover:text-red-600 bg-white transition text-stone-400"
-              title="Clear chat history"
-            >
-              <Trash className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Chat Messages Scrolling Body */}
-        <div className="flex-1 p-6 space-y-5 overflow-y-auto max-h-[380px] bg-white text-sm">
-          {messages.length === 0 ? (
-            <div className="py-24 text-center text-stone-400 text-xs font-mono">
-              Initialize a cognitive strategic query with {getAgentLabel(activeAgent)}.
-            </div>
-          ) : (
-            messages.map((m) => {
-              const isAssistant = m.role === "assistant";
-              const isSelected = selectedMsgId === m.id;
-
-              return (
-                <div
-                  key={m.id}
-                  onClick={() => setSelectedMsgId(m.id)}
-                  className={`flex flex-col cursor-pointer p-3.5 rounded-xl border transition ${
-                    isAssistant
-                      ? isSelected
-                        ? "bg-stone-50 border-stone-400"
-                        : "bg-stone-50/50 border-stone-150 hover:border-stone-300"
-                      : "bg-white border-transparent hover:bg-stone-50/20"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <span className="font-mono text-[9px] font-bold tracking-wider uppercase opacity-55">
-                      {isAssistant ? getAgentLabel(activeAgent) : "User Context"}
-                    </span>
-                    <div className="flex space-x-1">
-                      {m.isPinned && (
-                        <Pin className="h-3 w-3 text-emerald-500 shrink-0" />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-1.5 whitespace-pre-wrap text-xs text-stone-850 font-serif leading-relaxed select-text">
-                    {m.content}
-                  </div>
-
-                  {isAssistant && m.reasoningTrace && m.reasoningTrace.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-stone-100/60 text-[10px] text-stone-500">
-                      <div className="flex items-center space-x-1.5 font-bold font-mono text-[9px] uppercase tracking-wider text-stone-400">
-                        <Sparkles className="h-3 w-3" />
-                        <span>Reasoning Trace (CoS Enclave)</span>
-                      </div>
-                      <div className="space-y-1 mt-1.5 font-mono text-[9px] leading-normal pl-4 border-l border-stone-200">
-                        {m.reasoningTrace.map((step, sIdx) => (
-                          <div key={sIdx} className="flex items-start space-x-1.5">
-                            <span className="text-emerald-500 font-bold">&gt;</span>
-                            <span>{step}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-          {sendingMessage && (
-            <div className="flex justify-start">
-              <div className="bg-stone-50 rounded-2xl p-4 rounded-tl-sm border border-stone-200 max-w-[85%]">
-                <div className="flex items-center space-x-2">
-                  <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-                  <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={chatBottomRef} />
-        </div>
-
-        {/* Suggestion Prompts Row */}
-        <div className="px-6 py-2.5 bg-stone-50/50 border-t border-b border-stone-150 flex flex-wrap gap-2 shrink-0">
-          <span className="text-[10px] font-semibold text-stone-400 uppercase font-mono flex items-center pr-1">Prompts:</span>
-          {[
-            { text: "Analyze today's sleep & workout metrics compliance and formulate schedule", label: "Vitality Review" },
-            { text: "Verify halal portfolio compliance and review ledger logs", label: "Wealth Audit" },
-            { text: "Audit today's Salah consistency & construct next action CQRS", label: "Salah Audit" }
-          ].map((item, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                if (!sendingMessage) {
-                  onSendMessage(item.text, activeAgent);
-                }
-              }}
-              disabled={sendingMessage}
-              className="text-[10px] bg-white border border-stone-200 px-2.5 py-1 rounded-full hover:border-stone-400 hover:bg-stone-50 transition text-stone-600 font-medium font-mono"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Chat Input form */}
-        <form onSubmit={handleSubmit} className="p-4 bg-stone-50 border-t border-stone-200 flex items-center space-x-2 shrink-0">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            disabled={sendingMessage}
-            placeholder={`Ask ${getAgentLabel(activeAgent)} to optimize lifestyle aggregates...`}
-            className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-900 shadow-sm"
-          />
-          <button
-            type="submit"
-            disabled={sendingMessage || !inputValue.trim()}
-            className="bg-stone-900 text-white rounded-xl p-2.5 hover:bg-stone-800 transition shadow disabled:opacity-50"
-          >
-            {sendingMessage ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
-        </form>
-
-      </div>
-
-      {/* Right Col: Strategic Context & Inpector (Col 4) */}
-      <div className="lg:col-span-1 space-y-4 flex flex-col justify-between">
-        
-        {/* Agent Select Panel */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-sm space-y-3 shrink-0">
-          <h4 className="text-[10px] font-bold text-stone-400 uppercase font-mono tracking-wider">Strategic Sub-Agent Swapper</h4>
-          <div className="space-y-1.5 font-mono text-[10px]">
-            {[
-              { id: "gabriel_cos", label: "Gabriel (Chief of Staff)", icon: Sparkles },
-              { id: "deen_auditor", label: "Deen Auditor", icon: Shield },
-              { id: "wealth_architect", label: "Wealth Architect", icon: Layers },
-              { id: "health_sentinel", label: "Health Sentinel", icon: Info }
-            ].map((agent) => (
-              <button
-                key={agent.id}
-                type="button"
-                onClick={() => {
-                  setActiveAgent(agent.id);
-                  onAddSignalREvent(`Gabriel router routed focus context to: ${agent.id}`);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition border flex items-center space-x-2 ${
-                  activeAgent === agent.id
-                    ? "bg-stone-900 border-stone-950 text-white font-bold"
-                    : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
-                }`}
-              >
-                <agent.icon className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate">{agent.label}</span>
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-stone-500 leading-normal pt-1.5 font-serif italic">
-            {getAgentDescription(activeAgent)}
-          </p>
-        </div>
-
-        {/* Context inspector block */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-sm flex-1 flex flex-col justify-between">
-          <div>
-            <h4 className="text-[10px] font-bold text-stone-400 uppercase font-mono tracking-wider mb-3">Grounding Context Viewer</h4>
-            
-            <div className="space-y-3 text-[10.5px] leading-relaxed">
-              {/* Goal */}
-              <div className="flex items-start space-x-2">
-                <Bookmark className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-stone-800 font-mono text-[9px] block uppercase">Referenced Goal</strong>
-                  <span className="text-stone-500 font-sans block">{userProfile.currentGoal}</span>
-                </div>
-              </div>
-
-              {/* Memory */}
-              <div className="flex items-start space-x-2 pt-2 border-t border-stone-100">
-                <BookOpen className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-stone-800 font-mono text-[9px] block uppercase">Referenced Memories (Qdrant)</strong>
-                  <span className="text-stone-500 font-serif block italic">
-                    "{activeMsg?.referencedMemories?.[0] || "Sleep rebound rule, Shariah venture filter criteria."}"
-                  </span>
-                </div>
-              </div>
-
-              {/* Policy */}
-              <div className="flex items-start space-x-2 pt-2 border-t border-stone-100">
-                <Shield className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-stone-800 font-mono text-[9px] block uppercase">Referenced Invariant Policies</strong>
-                  <span className="text-stone-500 font-sans block">{activeMsg?.referencedPolicies?.[0] || "Prayer window override, Halal capital preservation limit."}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-stone-100 font-mono text-[9px] text-stone-400 text-center uppercase tracking-wider mt-4">
-            Grounding Sync: 100% Verified
-          </div>
-        </div>
-
-      </div>
-
+  const folders=["all",...new Set(conversations.map(item=>item.folder||"General"))],filtered = conversations.filter(item => (folder==="all"||(item.folder||"General")===folder)&&item.title.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const togglePin=async(item:any)=>{await fetch(`/api/ai/conversations/${item.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({pinned:!item.pinned})});onAddSignalREvent(item.pinned?"Conversation unpinned.":"Conversation pinned.");onSelectConversation(item.id)};
+  return <div className="max-w-6xl mx-auto bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden grid md:grid-cols-[230px_minmax(0,1fr)] min-h-[650px]">
+    <aside className="border-r bg-stone-50 p-3 hidden md:flex flex-col gap-3"><button onClick={onCreateConversation} className="bg-stone-900 text-white rounded-xl px-3 py-2.5 text-xs font-bold flex items-center justify-center gap-2"><MessageSquarePlus className="h-4 w-4"/>New conversation</button><label className="relative"><Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-stone-400"/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search chats" className="w-full border rounded-lg pl-8 pr-2 py-2 text-xs bg-white"/></label><select value={folder} onChange={event=>setFolder(event.target.value)} className="rounded-lg border bg-white px-2 py-2 text-xs">{folders.map(value=><option key={value} value={value}>{value==="all"?"All folders":value}</option>)}</select><div className="overflow-y-auto space-y-1 flex-1">{filtered.map(item=><div key={item.id} className={`group rounded-lg p-2 cursor-pointer ${activeConversationId===item.id?"bg-purple-100 text-purple-950":"hover:bg-white"}`} onClick={()=>onSelectConversation(item.id)}><p className="flex items-center gap-1 text-xs font-medium truncate">{item.pinned&&<Pin className="h-3 w-3 fill-current"/>}{item.title}</p><div className="flex items-center justify-between mt-1"><span className="text-[9px] text-stone-400">{item.messageCount} · {item.folder||"General"}</span><span className="hidden group-hover:flex gap-1"><button onClick={event=>{event.stopPropagation();void togglePin(item)}} title={item.pinned?"Unpin":"Pin"}><Pin className="h-3 w-3"/></button><button onClick={event=>{event.stopPropagation();onRenameConversation(item.id);}} title="Rename"><Edit3 className="h-3 w-3"/></button><button onClick={event=>{event.stopPropagation();onArchiveConversation(item.id);}} title="Archive"><Archive className="h-3 w-3"/></button><button onClick={event=>{event.stopPropagation();onDeleteConversation(item.id);}} title="Delete" className="text-red-600"><Trash className="h-3 w-3"/></button></span></div></div>)}</div><p className="text-[9px] leading-4 text-stone-400">Chats and their source provenance are saved locally.</p></aside>
+    <div className="min-w-0 flex flex-col">
+    <div className="md:hidden p-3 border-b bg-stone-50 flex gap-2"><select value={activeConversationId || ""} onChange={event=>onSelectConversation(event.target.value)} className="border rounded-lg px-2 py-2 text-xs flex-1 min-w-0"><option value="" disabled>Select conversation</option>{conversations.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select><button onClick={onCreateConversation} className="bg-stone-900 text-white rounded-lg px-3"><MessageSquarePlus className="h-4 w-4"/></button></div>
+    <header className="p-5 border-b border-stone-200 flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">LifeOS Command Centre</h2>{aiStatus && <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${aiStatus.connected ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{aiStatus.connected ? `${aiStatus.provider} · ${aiStatus.model}` : "Local capability only"}</span>}{integration&&<span className="text-[10px] font-bold px-2 py-1 rounded-full bg-blue-50 text-blue-800">{integration.coverage.connected}/{integration.coverage.total} domains grounded</span>}</div><p className="text-xs text-stone-500 mt-1">Current records override older memory. Every proposed write waits for your approval.</p>{lifeContext&&<div className="flex flex-wrap gap-1.5 mt-2 text-[9px] uppercase"><span className="bg-blue-50 text-blue-700 rounded px-2 py-1">{lifeContext.goals.active} goals</span><span className="bg-purple-50 text-purple-700 rounded px-2 py-1">{lifeContext.tasks.open} open tasks</span><span className="bg-emerald-50 text-emerald-700 rounded px-2 py-1">{lifeContext.finance.verification.pendingReview} finance pending</span><span className="bg-stone-100 rounded px-2 py-1">{lifeContext.memory.userConfirmed} confirmed memories</span></div>}{integration&&<details className="mt-2"><summary className="cursor-pointer text-[10px] font-medium text-stone-600">View AI sources and attention ({integration.attention.reduce((sum:number,item:any)=>sum+item.count,0)})</summary><div className="mt-2 flex flex-wrap gap-1.5">{integration.coverage.domains.map((domain:any)=><span key={domain.id} title={`${domain.authoritativeSource} · ${domain.recordCount} records · ${domain.asOf||"no dated record"}`} className={`rounded px-2 py-1 text-[9px] ${domain.availableToAi?"bg-emerald-50 text-emerald-800":"bg-stone-100 text-stone-500"}`}>{domain.label}: {domain.recordCount}</span>)}</div></details>}</div><div className="flex gap-2"><button onClick={exportChat} className="p-2 border rounded-lg" title="Export"><Download className="h-4 w-4"/></button><button onClick={onClearHistory} className="p-2 border rounded-lg" title="New conversation"><MessageSquarePlus className="h-4 w-4"/></button></div></header>
+    <div className="flex gap-1 overflow-x-auto border-b bg-stone-50 px-4 py-2" aria-label="Assistant mode">{[["today","Today"],["finance","Finance"],["debt","Debt Coach"],["goals","Goals"],["work","Work"],["career","Career"],["business","Business"],["system","System Help"]].map(([id,label])=><button key={id} onClick={()=>setMode(id)} className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold ${mode===id?"bg-stone-900 text-white":"border bg-white"}`}>{label}</button>)}</div><AiActionCenter onActivity={onAddSignalREvent}/>
+    <main className="p-6 space-y-4 min-h-[420px] max-h-[560px] overflow-y-auto">{messages.map((m) => <div key={m.id} className={`rounded-xl p-4 text-sm ${m.role === "user" ? "bg-stone-900 text-white ml-10" : "bg-stone-50 border border-stone-200 mr-10"}`}><div className="text-[9px] uppercase tracking-wider opacity-60 mb-2">{m.role === "user" ? userProfile.name : "LifeOS Assistant"}</div><MarkdownMessage content={m.content} inverted={m.role === "user"} /></div>)}{sendingMessage && <div className="text-xs text-stone-500">Waiting for assistant…</div>}<div ref={bottom}/></main>
+    <div className="px-6 py-3 border-t bg-stone-50 flex flex-wrap gap-2">{["What needs my attention now?", "Use my current records to recommend the next action", "What information is missing or stale?"].map((p) => <button key={p} onClick={() => onSendMessage(p, `lifeos_assistant:${mode}`)} disabled={sendingMessage} className="text-xs bg-white border rounded-full px-3 py-1.5 text-left">{p}</button>)}</div>
+    <form onSubmit={submit} className="p-4 border-t flex gap-2"><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask across finance, work, goals, tasks, routines and memory" className="flex-1 border rounded-xl px-4 py-3 text-sm"/><button disabled={sendingMessage || !input.trim()} className="bg-stone-900 text-white rounded-xl p-3 disabled:opacity-40">{sendingMessage ? <RefreshCw className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}</button></form>
     </div>
-  );
+  </div>;
 }

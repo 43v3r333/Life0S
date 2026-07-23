@@ -14,9 +14,10 @@ export interface QdrantPoint {
 class QdrantSimulator {
   private points: QdrantPoint[] = [];
   private writePromise: Promise<void> = Promise.resolve();
+  private readonly ready: Promise<void>;
 
   constructor() {
-    this.init();
+    this.ready = this.init();
   }
 
   private async init() {
@@ -53,6 +54,7 @@ class QdrantSimulator {
    * If an active Gemini API key is configured, it will use real Google embeddings!
    */
   public async getEmbeddings(text: string, geminiKey?: string): Promise<number[]> {
+    await this.ready;
     const defaultDims = 1536;
     if (geminiKey) {
       try {
@@ -71,15 +73,16 @@ class QdrantSimulator {
       }
     }
 
-    // High fidelity, reproducible mock vector based on string hash and char values
+    // Reproducible local feature-hashing vector. Word and adjacent-word
+    // features preserve substantially more meaning than character positions.
     const vector = new Array(defaultDims).fill(0);
-    const cleaned = text.toLowerCase().replace(/[^a-z0-9]/g, "");
-    
-    // Hash terms and spread values across the 1536 dimensions
-    for (let i = 0; i < cleaned.length; i++) {
-      const charCode = cleaned.charCodeAt(i);
-      const dimensionIndex = (charCode * (i + 1) * 31) % defaultDims;
-      vector[dimensionIndex] = (vector[dimensionIndex] || 0) + (charCode / 128);
+    const terms = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((term) => term.length > 2);
+    const features = [...terms, ...terms.slice(0, -1).map((term, index) => `${term}_${terms[index + 1]}`)];
+    for (const feature of features) {
+      let hash = 2166136261;
+      for (let i = 0; i < feature.length; i++) { hash ^= feature.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+      const dimensionIndex = Math.abs(hash) % defaultDims;
+      vector[dimensionIndex] += feature.includes("_") ? 1.5 : 1;
     }
 
     // Normalize the vector
@@ -96,6 +99,7 @@ class QdrantSimulator {
   }
 
   public async upsertPoint(id: string, vector: number[], payload: Record<string, any>): Promise<void> {
+    await this.ready;
     const index = this.points.findIndex((p) => p.id === id);
     if (index >= 0) {
       this.points[index] = { id, vector, payload };
@@ -106,7 +110,14 @@ class QdrantSimulator {
     await this.save();
   }
 
+  public async deletePoint(id: string): Promise<void> {
+    await this.ready;
+    this.points = this.points.filter((point) => point.id !== id);
+    await this.save();
+  }
+
   public async searchPoints(queryVector: number[], threshold: number = 0.15, limit: number = 5): Promise<any[]> {
+    await this.ready;
     const results = this.points.map((point) => {
       // Calculate Cosine Similarity
       let dotProduct = 0;

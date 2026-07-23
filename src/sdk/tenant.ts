@@ -11,9 +11,11 @@ export interface Tenant {
   tier: "Standard" | "Enterprise" | "Ultimate_Waqf";
 }
 
+import { personalProfile } from "../config/personalization.js";
+
 export class TenantContext {
   private static _currentTenantId: string = "tenant-default-01";
-  private static _currentOperator: string = "Ethan";
+  private static _currentOperator: string = personalProfile.name;
 
   public static getCurrentTenantId(): string {
     return this._currentTenantId;

@@ -34,7 +34,7 @@ export class AIGateway {
         console.error("[AI GATEWAY] Failed to initialize Google GenAI SDK:", err.message);
       }
     } else {
-      console.warn("[AI GATEWAY] Initialized in mock fallback mode (No GEMINI_API_KEY detected).");
+      console.info("[AI GATEWAY] External Gemini capability unavailable; deterministic local capability enabled.");
     }
   }
 
@@ -91,8 +91,9 @@ export class AIGateway {
         structuredOutput = { text: "Fallback result triggered due to processing error." };
       }
     } else {
-      // Mock Fallback Model Route
-      rawResponse = this.generateMockResponse(intent, userInput);
+      // Deterministic local capability. It reports availability honestly and
+      // never fabricates scores, forecasts, or completed analysis.
+      rawResponse = this.generateLocalUnavailableResponse(intent);
       try {
         structuredOutput = JSON.parse(rawResponse);
         validationSuccess = true;
@@ -176,17 +177,12 @@ Return a highly structured response adhering perfectly to requested formats.
     return true;
   }
 
-  // --- Local Fallback Generator ---
-  private generateMockResponse(intent: string, input: string): string {
-    if (intent === "Strategic_Alignment_Evaluation") {
-      return JSON.stringify({
-        pasScore: 88,
-        forecast: "Strong path to realization under current discipline logs. Expected completion within scheduled buffer.",
-        recommendations: "1. Lock weekly standing calendars for milestone reviews.\n2. Dedicate deep-work blocks early in the day."
-      });
-    }
+  private generateLocalUnavailableResponse(intent: string): string {
     return JSON.stringify({
-      text: `Mock evaluation completed for intent ${intent}. Input: ${input}`
+      text: "External model capability is unavailable. No AI-derived result was generated.",
+      intent,
+      capability: "deterministic-local",
+      providerAvailable: false
     });
   }
 }

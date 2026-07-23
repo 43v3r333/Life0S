@@ -1,7 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
+import { initializeSqlite, sqliteStorageStatus, verifySqliteState, writeSqliteState } from "./sqliteStore.js";
+import type { AiMemory, AiProposal, AuditEvent, BankAccount, BankTransaction, FinanceEntry, Liability, LiabilityPayment, UploadedDocument, WorkShift, WorkTask } from "./domainTypes.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.LIFEOS_DATA_DIR
+  ? path.resolve(process.cwd(), process.env.LIFEOS_DATA_DIR)
+  : path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
 export interface Goal {
@@ -120,18 +124,44 @@ export interface DbState {
   portfolio?: any[];
   zakahHistory?: any[];
   waqfRegistry?: any[];
+  financeEntries?: FinanceEntry[];
+  incomeSources?: any[];
+  monthlyBudgets?: any[];
+  salaryBreakdowns?: any[];
+  bankAccounts?: BankAccount[];
+  debts?: Liability[];
+  liabilityPayments?: LiabilityPayment[];
+  liabilityAdjustments?: any[];
+  bankTransactions?: BankTransaction[];
+  bankStatementAnalyses?: any[];
+  bankStatementDocuments?: UploadedDocument[];
+  merchantCategoryRules?: any[];
+  creditCardStatements?: any[];
+  workShifts?: WorkShift[];
+  workTasks?: WorkTask[];
+  aiActionProposals?: AiProposal[];
+  aiMemories?: AiMemory[];
+  aiFinanceBriefings?: any[];
+  operationAudit?: AuditEvent[];
+  onboarding?: Record<string, any>;
 }
 
 let dbCache: DbState | null = null;
 let writePromise: Promise<void> = Promise.resolve();
 
+export function toPersistedState(state: DbState): DbState {
+  return {
+    ...state,
+    vault: Object.fromEntries(Object.keys(state.vault || {}).map(key => [key, ""])),
+  };
+}
+
 export async function initDb(initialState: DbState): Promise<DbState> {
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     try {
-      const content = await fs.readFile(DB_FILE, "utf-8");
-      dbCache = JSON.parse(content);
-      console.log(`[DB] Loaded persistent PostgreSQL-equivalent state from ${DB_FILE}`);
+      dbCache = await initializeSqlite(DATA_DIR, initialState, DB_FILE) as DbState;
+      console.log(`[DB] Loaded authoritative SQLite state from ${sqliteStorageStatus().path}`);
       // Ensure any new tables are synced with initial values if they are empty
       if (dbCache) {
         dbCache.goals = dbCache.goals || [];
@@ -146,15 +176,34 @@ export async function initDb(initialState: DbState): Promise<DbState> {
         dbCache.portfolio = dbCache.portfolio || [];
         dbCache.zakahHistory = dbCache.zakahHistory || [];
         dbCache.waqfRegistry = dbCache.waqfRegistry || [];
+        dbCache.financeEntries = dbCache.financeEntries || [];
+        dbCache.incomeSources = dbCache.incomeSources || [];
+        dbCache.monthlyBudgets = dbCache.monthlyBudgets || [];
+        dbCache.salaryBreakdowns = dbCache.salaryBreakdowns || [];
+        dbCache.bankAccounts = dbCache.bankAccounts || [];
+        dbCache.debts = dbCache.debts || [];
+        dbCache.liabilityPayments = dbCache.liabilityPayments || [];
+        dbCache.liabilityAdjustments = dbCache.liabilityAdjustments || [];
+        dbCache.bankTransactions = dbCache.bankTransactions || [];
+        dbCache.bankStatementAnalyses = dbCache.bankStatementAnalyses || [];
+        dbCache.bankStatementDocuments = dbCache.bankStatementDocuments || [];
+        dbCache.merchantCategoryRules = dbCache.merchantCategoryRules || [];
+        dbCache.creditCardStatements = dbCache.creditCardStatements || [];
+        dbCache.workShifts = dbCache.workShifts || [];
+        dbCache.workTasks = dbCache.workTasks || [];
+        dbCache.aiActionProposals = dbCache.aiActionProposals || [];
+        dbCache.aiMemories = dbCache.aiMemories || [];
+        dbCache.aiFinanceBriefings = dbCache.aiFinanceBriefings || [];
+        dbCache.operationAudit = dbCache.operationAudit || [];
+        dbCache.onboarding = dbCache.onboarding || {};
       }
     } catch (err) {
-      dbCache = initialState;
-      await saveDb();
-      console.log(`[DB] Created new relational database file at ${DB_FILE}`);
+      console.error("[DB] SQLite initialization or verification failed:", err);
+      throw err;
     }
   } catch (err) {
-    console.error("[DB] Database initialization failed, falling back to memory:", err);
-    dbCache = initialState;
+    console.error("[DB] Database initialization failed; startup stopped to protect persisted data:", err);
+    throw err;
   }
   return dbCache!;
 }
@@ -163,15 +212,17 @@ export async function saveDb(): Promise<void> {
   if (!dbCache) return;
   // Prevent parallel/overlapping file writes using a micro-lock promise chain
   writePromise = writePromise.then(async () => {
-    try {
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      await fs.writeFile(DB_FILE, JSON.stringify(dbCache, null, 2), "utf-8");
-    } catch (err) {
-      console.error("[DB] Failed to save relational database to file:", err);
-    }
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    // Provider secrets are runtime-only. Persisting them in SQLite would expose
+    // plaintext tokens, so the compatibility state is sanitized first.
+    const persistedState = toPersistedState(dbCache!);
+    writeSqliteState(persistedState);
   });
   await writePromise;
 }
+
+export function getStorageStatus() { return sqliteStorageStatus(); }
+export function verifyStorage() { if (!dbCache) throw new Error("Database not initialized."); return verifySqliteState(toPersistedState(dbCache)); }
 
 export function getDb(): DbState {
   if (!dbCache) {

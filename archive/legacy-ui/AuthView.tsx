@@ -270,31 +270,25 @@ export default function AuthView({ onLoginSuccess, currentUser, onLogout }: Auth
                 <div className="grid grid-cols-3 gap-2 text-xs font-mono">
                   <button
                     type="button"
-                    onClick={() => {
-                      onLoginSuccess("GoogleUser");
-                      setTab("sessions");
-                    }}
-                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 hover:bg-stone-50 rounded bg-white text-stone-700"
+                    disabled
+                    title="Google OAuth is not configured"
+                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 rounded bg-stone-100 text-stone-400 cursor-not-allowed"
                   >
                     <span>Google OAuth</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      onLoginSuccess("MicrosoftUser");
-                      setTab("sessions");
-                    }}
-                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 hover:bg-stone-50 rounded bg-white text-stone-700"
+                    disabled
+                    title="Microsoft OAuth is not configured"
+                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 rounded bg-stone-100 text-stone-400 cursor-not-allowed"
                   >
                     <span>Microsoft</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      onLoginSuccess("Ethan");
-                      setTab("sessions");
-                    }}
-                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 hover:bg-stone-50 rounded bg-white text-stone-700"
+                    disabled
+                    title="GitHub OAuth is not configured"
+                    className="flex items-center justify-center space-x-1.5 py-2 border border-stone-200 rounded bg-stone-100 text-stone-400 cursor-not-allowed"
                   >
                     <span>GitHub OAuth</span>
                   </button>

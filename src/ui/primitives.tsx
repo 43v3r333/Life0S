@@ -1,0 +1,17 @@
+import React from "react";
+import { AlertCircle, CheckCircle2, Info, LoaderCircle, X } from "lucide-react";
+
+export type StatusTone="neutral"|"success"|"warning"|"danger"|"ai"|"authoritative";
+const tones:Record<StatusTone,string>={neutral:"bg-stone-100 text-stone-700",success:"bg-emerald-100 text-emerald-800",warning:"bg-amber-100 text-amber-900",danger:"bg-red-100 text-red-800",ai:"bg-violet-100 text-violet-800",authoritative:"bg-blue-100 text-blue-800"};
+export const PageHeader=({title,description,eyebrow,actions}:{title:string;description?:string;eyebrow?:string;actions?:React.ReactNode})=><header className="life-page-header"><div className="min-w-0">{eyebrow&&<span className="life-eyebrow">{eyebrow}</span>}<h1>{title}</h1>{description&&<p>{description}</p>}</div>{actions&&<div className="life-header-actions">{actions}</div>}</header>;
+export const Card=({children,className=""}:{children:React.ReactNode;className?:string})=><section className={`life-card ${className}`}>{children}</section>;
+export const Badge=({children,tone="neutral"}:{children:React.ReactNode;tone?:StatusTone})=><span className={`life-badge ${tones[tone]}`}>{children}</span>;
+export const MetricCard=({label,value,detail,tone="neutral"}:{label:string;value:React.ReactNode;detail?:string;tone?:StatusTone})=><div className="life-metric"><span>{label}</span><strong>{value}</strong>{detail&&<small>{detail}</small>}{tone!=="neutral"&&<i className={`life-metric-dot ${tones[tone]}`}/>}</div>;
+export const LoadingState=({label="Loading your records…"}:{label?:string})=><div className="life-state"><LoaderCircle className="animate-spin"/><span>{label}</span></div>;
+export const EmptyState=({title,description}:{title:string;description?:string})=><div className="life-state"><Info/><strong>{title}</strong>{description&&<span>{description}</span>}</div>;
+export const Notice=({tone="neutral",title,children}:{tone?:StatusTone;title:string;children?:React.ReactNode})=><div className={`life-notice ${tones[tone]}`}>{tone==="danger"?<AlertCircle/>:<CheckCircle2/>}<div><strong>{title}</strong>{children&&<div>{children}</div>}</div></div>;
+export const SegmentedTabs=({items,value,onChange,label}:{items:Array<{id:string;label:string}>;value:string;onChange:(id:string)=>void;label:string})=><nav className="life-tabs" aria-label={label}>{items.map(item=><button type="button" aria-current={value===item.id?"page":undefined} key={item.id} onClick={()=>onChange(item.id)}>{item.label}</button>)}</nav>;
+
+export function Dialog({open,title,description,confirmLabel="Confirm",tone="neutral",busy=false,onConfirm,onClose,children}:{open:boolean;title:string;description?:string;confirmLabel?:string;tone?:StatusTone;busy?:boolean;onConfirm?:()=>void;onClose:()=>void;children?:React.ReactNode}){
+ if(!open)return null;return <div className="life-dialog-backdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><div role="dialog" aria-modal="true" aria-labelledby="life-dialog-title" className="life-dialog"><button className="life-dialog-close" aria-label="Close dialog" onClick={onClose}><X/></button><h2 id="life-dialog-title">{title}</h2>{description&&<p>{description}</p>}{children}<div className="life-dialog-actions"><button onClick={onClose} className="life-button-secondary">Cancel</button>{onConfirm&&<button disabled={busy} onClick={onConfirm} className={tone==="danger"?"life-button-danger":"life-button-primary"}>{busy?"Working…":confirmLabel}</button>}</div></div></div>
+}

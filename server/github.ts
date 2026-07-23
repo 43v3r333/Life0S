@@ -74,19 +74,11 @@ export async function syncGoalToGitHub(
   logs.push(`    -d '{"title":"[LifeOS Goal] ${goalTitle}","labels":["LifeOS"]}' \\`);
   logs.push(`    https://api.github.com/repos/${repoOwnerAndName}/issues`);
   
-  // Create a randomized simulated issue number
-  const simulatedIssueNumber = Math.floor(Math.random() * 200) + 120;
-  logs.push(`[EXTERNAL GATEWAY] Simulated Response Headers:`);
-  logs.push(`  HTTP/1.1 201 Created`);
-  logs.push(`  Content-Type: application/json; charset=utf-8`);
-  logs.push(`  X-RateLimit-Limit: 5000`);
-  logs.push(`[EXTERNAL GATEWAY] Simulated Sync Response: Successfully mapped and created virtual GitHub Issue #${simulatedIssueNumber}`);
+  logs.push(`[EXTERNAL GATEWAY] No external write was performed.`);
   logs.push(`[EXTERNAL GATEWAY] [GUIDE] To connect this live to your actual GitHub repositories, open the Settings -> Secrets menu or edit the .env file to configure a valid 'GITHUB_TOKEN'.`);
 
   return {
-    success: true,
-    issueNumber: simulatedIssueNumber,
-    url: `https://github.com/${repoOwnerAndName}/issues/${simulatedIssueNumber}`,
+    success: false,
     logs,
     usingRealIntegration: false,
   };

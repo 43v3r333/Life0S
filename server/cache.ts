@@ -31,6 +31,15 @@ class RedisCacheStore {
     return this.cache.delete(key);
   }
 
+  public deletePrefix(prefix: string): number {
+    let deleted = 0;
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix) && this.cache.delete(key)) deleted += 1;
+    }
+    console.log(`[REDIS CACHE] DEL prefix ${prefix} (${deleted} keys)`);
+    return deleted;
+  }
+
   public clear(): void {
     this.cache.clear();
     console.log("[REDIS CACHE] FLUSHALL executed");

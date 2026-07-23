@@ -923,7 +923,7 @@ export default function EnterpriseIntegrationView({
                   {Object.entries(manufacturingMetrics).map(([key, val]) => (
                     <div key={key} className="p-4 bg-stone-50 border border-stone-200 rounded-xl font-mono text-xs">
                       <span className="text-[9px] text-stone-400 font-bold uppercase block">{key.replace(/([A-Z])/g, " $1")}</span>
-                      <span className="text-base font-bold text-stone-950 block mt-1">{val}</span>
+                      <span className="text-base font-bold text-stone-950 block mt-1">{String(val)}</span>
                     </div>
                   ))}
                 </div>
@@ -1035,7 +1035,7 @@ export default function EnterpriseIntegrationView({
                   {Object.entries(deviceMetrics).map(([key, val]) => (
                     <div key={key} className="p-4 bg-stone-50 border border-stone-200 rounded-xl font-mono text-xs">
                       <span className="text-[9px] text-stone-400 font-bold uppercase block">{key.replace(/([A-Z])/g, " $1")}</span>
-                      <span className="text-base font-bold text-stone-950 block mt-1">{val}</span>
+                      <span className="text-base font-bold text-stone-950 block mt-1">{String(val)}</span>
                     </div>
                   ))}
                 </div>

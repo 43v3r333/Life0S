@@ -456,8 +456,8 @@ export default function EnterpriseAiOrganizationView({
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={tenantResourceData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
-                          <XAxis dataKey="name" stroke="#888888" fontSize={9} fontClassName="font-mono" />
-                          <YAxis stroke="#888888" fontSize={9} fontClassName="font-mono" />
+                          <XAxis dataKey="name" stroke="#888888" fontSize={9} className="font-mono" />
+                          <YAxis stroke="#888888" fontSize={9} className="font-mono" />
                           <Tooltip contentStyle={{ fontSize: "11px", fontFamily: "monospace" }} />
                           <Legend wrapperStyle={{ fontSize: "10px", fontFamily: "monospace" }} />
                           <Bar dataKey="AI_Tokens_K" fill="#4338ca" name="AI Compute (Tokens K)" radius={[4, 4, 0, 0]} />

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { rm } from "node:fs/promises";
+import path from "node:path";
 
 import { createSafeVaultState, loadRuntimeConfiguration, toVaultStatus, validateRuntimeConfiguration } from "../server/config.js";
 import { initDb, getDb } from "../server/db.js";
@@ -47,7 +48,9 @@ function baseState() {
 }
 
 async function resetDb(): Promise<void> {
-  await rm("data", { recursive: true, force: true });
+  const testDataDir = process.env.LIFEOS_DATA_DIR;
+  assert.ok(testDataDir && testDataDir !== "data", "Tests require an isolated LIFEOS_DATA_DIR.");
+  await rm(path.resolve(process.cwd(), testDataDir), { recursive: true, force: true });
   await initDb(baseState());
   const db = getDb();
   Object.assign(db, baseState());
@@ -63,21 +66,31 @@ test("safe vault defaults contain no seeded credentials and production config fa
   const vault = createSafeVaultState({ nodeEnv: "development" });
   assert.deepEqual(vault, {
     openaiKey: "",
+    nvidiaKey: "",
     geminiKey: "",
     anthropicKey: "",
     githubToken: "",
     microsoftToken: "",
     googleToken: "",
+    googleClientId: "",
+    googleClientSecret: "",
+    googleRefreshToken: "",
+    googleGrantedScopes: "",
     dbConnectionString: "",
     smtpConnectionString: ""
   });
   assert.deepEqual(toVaultStatus(vault), {
     openaiKey: false,
+    nvidiaKey: false,
     geminiKey: false,
     anthropicKey: false,
     githubToken: false,
     microsoftToken: false,
     googleToken: false,
+    googleClientId: false,
+    googleClientSecret: false,
+    googleRefreshToken: false,
+    googleGrantedScopes: false,
     dbConnectionString: false,
     smtpConnectionString: false
   });

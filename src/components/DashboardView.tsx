@@ -1,234 +1,47 @@
-import React, { useState } from "react";
-import { Scale, Users, Heart, DollarSign, Flame, GraduationCap, ChevronRight, Activity, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles, Sliders } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, Brain, CheckCircle2, Circle, Flame, RefreshCw, Sparkles, Target, WalletCards, X } from "lucide-react";
 import { SystemScore, UserProfile } from "../types";
+import QuickMoneyPanel from "./QuickMoneyPanel";
 
-interface DashboardViewProps {
-  scores: SystemScore;
-  userProfile: UserProfile;
-  onChangeFocus: (focus: string) => void;
-  onNavigate: (tab: string) => void;
-  onAddSignalREvent: (msg: string) => void;
-}
+interface Props { scores:SystemScore; userProfile:UserProfile; onChangeFocus:(focus:string)=>void; onNavigate:(tab:string)=>void; onAddSignalREvent:(msg:string)=>void }
+const date=()=>new Date().toISOString().slice(0,10);
+const zar=(n:number)=>new Intl.NumberFormat("en-ZA",{style:"currency",currency:"ZAR",maximumFractionDigits:0}).format(n||0);
 
-export default function DashboardView({
-  scores,
-  userProfile,
-  onChangeFocus,
-  onNavigate,
-  onAddSignalREvent
-}: DashboardViewProps) {
-  const [editingFocus, setEditingFocus] = useState(false);
-  const [focusInput, setFocusInput] = useState(userProfile.currentGoal);
+export default function DashboardView({ userProfile,onChangeFocus,onNavigate,onAddSignalREvent }:Props){
+  const [data,setData]=useState<any>({command:{},context:{},goals:[],tasks:[],projects:[],habits:[],focus:[],analytics:{},vision:null});
+  const [loading,setLoading]=useState(true),[editing,setEditing]=useState(false),[focus,setFocus]=useState(userProfile.currentGoal);
+  const load=async()=>{setLoading(true);try{const paths=["personal/command-center","ai/life-context","goals","tasks","projects","habits","focus","planning/analytics","personal/vision"];const values=await Promise.all(paths.map(async p=>{const r=await fetch(`/api/${p}`);return r.ok?r.json():null}));setData({command:values[0]||{},context:values[1]||{},goals:values[2]||[],tasks:values[3]||[],projects:values[4]||[],habits:values[5]||[],focus:values[6]||[],analytics:values[7]||{},vision:values[8]});if(values[8]?.currentFocus){setFocus(values[8].currentFocus);onChangeFocus(values[8].currentFocus)}}finally{setLoading(false)}};
+  useEffect(()=>{load()},[]);
+  const saveFocus=async(e:React.FormEvent)=>{e.preventDefault();const value=focus.trim();if(!value||!data.vision)return;const r=await fetch("/api/personal/vision",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...data.vision,currentFocus:value})});const result=await r.json();if(!r.ok)return alert(result.error);onChangeFocus(value);setData({...data,vision:result});setEditing(false);onAddSignalREvent(`Current focus saved permanently: ${value}`)};
+  const today=date(),open=data.tasks.filter((t:any)=>t.status!=="completed"),overdue=open.filter((t:any)=>t.dueDate&&t.dueDate<today),due=useMemo(()=>[...open].sort((a:any,b:any)=>String(a.dueDate||"9999").localeCompare(String(b.dueDate||"9999"))).slice(0,5),[data.tasks]);
+  const activeGoals=data.goals.filter((g:any)=>!["completed","archived","cancelled"].includes(String(g.status).toLowerCase())),habitDone=data.habits.filter((h:any)=>(h.logs||[]).includes(today)).length;
+  const command=data.command,finance=command.finance||{},context=data.context,alerts=[...(command.alerts||[]),...overdue.map((t:any)=>({id:`task-${t.id}`,title:`Overdue: ${t.title}`,description:`Task was due ${t.dueDate}`,priority:"high"}))].slice(0,4);
+  const activeFocus=data.focus.find((f:any)=>f.active);
+  const highestGoal=[...activeGoals].sort((a:any,b:any)=>String(a.priority||"Medium").localeCompare(String(b.priority||"Medium"))||Number(a.progress||0)-Number(b.progress||0))[0],nextCommitment=[...(finance.nextExpectedPayments||[])].filter((item:any)=>item.date).sort((a:any,b:any)=>String(a.date).localeCompare(String(b.date)))[0],dayItems=command.day?.timeline||[],recentSpending=dayItems.filter((item:any)=>item.kind==="finance"&&item.entryType==="expense").slice(-3);
+  const openSection=(page:string,section?:string)=>{if(section){const url=new URL(window.location.href);url.searchParams.set("section",section);window.history.replaceState({},"",url)}onNavigate(page)};
+  const dismiss=async(id:string)=>{await fetch(`/api/personal/alerts/${encodeURIComponent(id)}/dismiss`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({until:today})});onAddSignalREvent("Attention item dismissed for today.");await load()};
+  return <div className="mx-auto max-w-7xl space-y-4">
+    <section className="rounded-2xl bg-stone-900 p-5 text-white shadow-lg"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><Sparkles className="h-3.5 w-3.5"/>Home command centre · {new Date().toLocaleDateString("en-ZA",{weekday:"long",day:"numeric",month:"long"})}</div>{editing?<form onSubmit={saveFocus} className="mt-3 flex gap-2"><input autoFocus value={focus} onChange={e=>setFocus(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-700 bg-stone-800 px-3 py-2 text-sm"/><button className="rounded-lg bg-emerald-400 px-4 text-xs font-bold text-stone-950">Save</button><button type="button" onClick={()=>setEditing(false)} className="rounded-lg border border-stone-700 px-3 text-xs">Cancel</button></form>:<><p className="mt-3 text-[10px] uppercase text-stone-400">Current focus</p><div className="mt-1 flex items-start gap-3"><h1 className="text-xl font-semibold">{data.vision?.currentFocus||focus}</h1><button onClick={()=>setEditing(true)} className="rounded border border-stone-700 px-2 py-1 text-[10px]">Edit</button></div></>}<p className="mt-3 max-w-3xl text-xs leading-5 text-stone-300">{command.briefing?.summary||"Loading your complete LifeOS picture…"}</p></div><div className="min-w-[220px] rounded-xl bg-white/10 p-3"><p className="text-[9px] uppercase text-stone-400">Recommended next action</p><strong className="mt-1 block text-sm">{command.briefing?.nextAction||due[0]?.title||"Review today’s plan"}</strong></div></div></section>
 
-  const handleFocusSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    onChangeFocus(focusInput);
-    setEditingFocus(false);
-    onAddSignalREvent(`ExecutiveFocusChangedEvent: New target set to "${focusInput}"`);
-  };
+    <div className="flex justify-end"><button onClick={load} disabled={loading} className="life-button-secondary flex items-center gap-2"><RefreshCw className={`h-3.5 w-3.5 ${loading?"animate-spin":""}`}/>Refresh today</button></div>
+    <QuickMoneyPanel onSaved={load} onActivity={onAddSignalREvent}/>
 
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-emerald-600 bg-emerald-50 border-emerald-100";
-    if (score >= 75) return "text-blue-600 bg-blue-50 border-blue-100";
-    if (score >= 60) return "text-amber-600 bg-amber-50 border-amber-100";
-    return "text-red-600 bg-red-50 border-red-100";
-  };
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8"><Metric label="Current shift" value={command.execution?.currentShift?.type||"Not set"}/><Metric label="Open tasks" value={open.length} warn={overdue.length>0}/><Metric label="Next commitment" value={nextCommitment?.date?.slice(5)||"None"}/><Metric label="Habits today" value={`${habitDone}/${data.habits.length}`}/><Metric label="Focus today" value={`${command.day?.summary?.focusMinutes||0}m`}/><Metric label="Bank cash" value={zar(finance.cash)}/><Metric label="Available now" value={zar(finance.safeDiscretionary)} warn={(finance.safeDiscretionary||0)<0}/><Metric label="AI memory" value={context.memory?.active||0}/></div>
 
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      
-      {/* Top Banner: Today's Focus & Critical Signals */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Today's Focus Card */}
-        <div className="lg:col-span-2 bg-stone-900 text-[#fafaf9] rounded-2xl p-6 border border-stone-800 shadow-xl flex flex-col justify-between min-h-[170px]">
-          <div>
-            <div className="flex items-center justify-between text-[10px] font-mono tracking-widest text-emerald-400 uppercase font-bold mb-3">
-              <span>EXECUTIVE_FOCUS_HORIZON</span>
-              <span className="flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-                <span>ENGAGED</span>
-              </span>
-            </div>
-
-            {editingFocus ? (
-              <form onSubmit={handleFocusSave} className="flex gap-2">
-                <input
-                  type="text"
-                  value={focusInput}
-                  onChange={(e) => setFocusInput(e.target.value)}
-                  className="bg-stone-800 border border-stone-700 text-white rounded px-3 py-1.5 text-xs focus:outline-none w-full"
-                />
-                <button type="submit" className="bg-emerald-500 text-stone-950 font-mono text-xs px-3 py-1.5 rounded font-bold">
-                  SAVE
-                </button>
-              </form>
-            ) : (
-              <div className="flex items-start justify-between gap-4">
-                <h2 className="text-xl font-medium tracking-tight font-sans leading-snug">
-                  {userProfile.currentGoal}
-                </h2>
-                <button
-                  onClick={() => setEditingFocus(true)}
-                  className="p-1 rounded bg-stone-800 text-stone-400 hover:text-white transition text-[10px] font-mono shrink-0 uppercase border border-stone-700"
-                >
-                  Edit
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-stone-800 pt-3.5 mt-4 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-stone-400 font-mono gap-2">
-            <span>COGNITIVE CHIEF OF STAFF ASSIGNED: GABRIEL</span>
-            <div className="flex items-center space-x-1.5 text-emerald-400">
-              <span>94% SCORE SYNCHRONIZED</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Critical Alerts & Policy Violations panel */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4">
-          <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono flex items-center space-x-1.5">
-            <AlertTriangle className="h-4 w-4 text-red-500 animate-pulse" />
-            <span>Active Signals & Alerts</span>
-          </h3>
-
-          <div className="space-y-2.5">
-            <div className="p-3 bg-red-50/50 border border-red-100 rounded-xl text-red-800 text-xs flex items-start space-x-2.5">
-              <ShieldAlert className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold block font-mono text-[10px] uppercase">Policy Violation detected</span>
-                <span className="text-stone-600 block mt-0.5 leading-normal">Fajr prayer telemetry log indicates 15 min deficit from threshold.</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-amber-800 text-xs flex items-start space-x-2.5">
-              <Activity className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold block font-mono text-[10px] uppercase">Vitality Warning</span>
-                <span className="text-stone-600 block mt-0.5 leading-normal">Sleep index fell to 5.8 hrs. Automatic context compaction engaged.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Grid: 10 Sub-Scores */}
-      <div>
-        <div className="flex items-center justify-between border-b border-stone-100 pb-3 mb-4">
-          <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono">Dynamic Jannah Scores</h3>
-          <span className="text-[10px] font-mono text-stone-400">CALCULATED SECURELY BY KERNEL</span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[
-            { id: "overall", name: "Overall Life", val: scores.overall, icon: Sparkles, tab: "settings" },
-            { id: "faith", name: "Deen (Faith)", val: scores.faith, icon: Scale, tab: "islam" },
-            { id: "marriage", name: "Marriage Care", val: scores.marriage, icon: Users, tab: "marriage" },
-            { id: "health", name: "Vitality (Health)", val: scores.health, icon: Heart, tab: "health" },
-            { id: "finance", name: "Wealth (Finance)", val: scores.finance, icon: DollarSign, tab: "finance" },
-            { id: "career", name: "Career Growth", val: scores.career, icon: Flame, tab: "career" },
-            { id: "business", name: "Business Build", val: scores.business, icon: Sliders, tab: "business" },
-            { id: "learning", name: "RAG Learning", val: scores.learning, icon: GraduationCap, tab: "learning" },
-            { id: "discipline", name: "Discipline Rate", val: scores.discipline, icon: CheckCircle2, tab: "settings" },
-            { id: "consistency", name: "Consistency", val: scores.consistency, icon: Activity, tab: "settings" }
-          ].map((sc) => {
-            const Icon = sc.icon;
-            return (
-              <div
-                key={sc.id}
-                onClick={() => onNavigate(sc.tab)}
-                className="bg-white border border-stone-200 hover:border-stone-400 transition cursor-pointer rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[115px]"
-              >
-                <div className="flex items-center justify-between">
-                  <div className={`p-1.5 rounded-lg border ${getScoreColor(sc.val)}`}>
-                    <Icon className="h-4 w-4 shrink-0" />
-                  </div>
-                  <span className="font-mono text-xs font-bold text-stone-900">{sc.val}%</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-stone-900 mt-2.5">{sc.name}</h4>
-                  <div className="w-full bg-stone-100 h-1 rounded-full mt-2 overflow-hidden">
-                    <div className="bg-stone-900 h-1 rounded-full" style={{ width: `${sc.val}%` }}></div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Strategic Recommendations & Upcoming Decisions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Recommendation lists */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center space-x-2 border-b border-stone-150 pb-3 mb-4">
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono">
-              Strategic AI Recommendations
-            </h3>
-          </div>
-
-          <div className="space-y-4 text-xs leading-relaxed text-stone-600">
-            <div className="flex items-start space-x-3">
-              <span className="text-emerald-500 font-bold font-mono">1.</span>
-              <p>
-                <strong>Compact Daily Planner Horizon</strong>: Based on 5.8hr sleep metrics deficit, Gabriel recommends skipping the 16:00 technical reading sprint to safeguard Asr-to-Maghrib spiritual buffer.
-              </p>
-            </div>
-            <div className="flex items-start space-x-3 pt-3 border-t border-stone-100">
-              <span className="text-emerald-500 font-bold font-mono">2.</span>
-              <p>
-                <strong>Allocate Halal Equity Spill</strong>: Financial ledgers indicate a £1.2k surplus. Wealth Sentinel suggests depositing 40% into the active gold tracker node to hedge inflation thresholds.
-              </p>
-            </div>
-            <div className="flex items-start space-x-3 pt-3 border-t border-stone-100">
-              <span className="text-emerald-500 font-bold font-mono">3.</span>
-              <p>
-                <strong>Trigger Relationship Core Check</strong>: Marriage Caretaker notes zero shared chore completions logged for 3 consecutive intervals. Complete the 'Meal prep support' task to preserve marital synergy scores.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Upcoming decisions */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center space-x-2 border-b border-stone-150 pb-3 mb-4">
-            <CheckCircle2 className="h-4 w-4 text-stone-500" />
-            <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono">
-              Pending Tactical Decisions
-            </h3>
-          </div>
-
-          <div className="space-y-3.5 text-xs font-mono">
-            {[
-              { id: "dec1", title: "Approve Jannah Venture Fund compliance endorsement", deadline: "Today 18:00" },
-              { id: "dec2", title: "Approve 4-week continuous learning curriculum compaction", deadline: "July 8" },
-              { id: "dec3", title: "Authorize Google Workspace SMTP secret vault link", deadline: "July 12" }
-            ].map((dec) => (
-              <div key={dec.id} className="p-3 bg-stone-50 rounded-xl border border-stone-200 flex items-center justify-between">
-                <div className="min-w-0 pr-4">
-                  <span className="font-semibold text-stone-900 block truncate">{dec.title}</span>
-                  <span className="text-[9px] text-stone-400 mt-0.5 block uppercase">Deadline: {dec.deadline}</span>
-                </div>
-                <button
-                  onClick={() => {
-                    alert(`Decision resolved: "${dec.title}" has been authorized and dispatched to domain events.`);
-                    onAddSignalREvent(`DecisionResolvedEvent { DecisionId = "${dec.id}", Authorized = true }`);
-                  }}
-                  className="bg-stone-900 hover:bg-stone-800 text-[#fafaf9] px-2.5 py-1 rounded text-[10px] font-bold"
-                >
-                  RESOLVE
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
+    <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr_0.9fr]">
+      <section className="overflow-hidden rounded-2xl border bg-white"><Header icon={Target} title="Today’s execution" action="Open Daily" onClick={()=>openSection("planner")}/><div className="divide-y">{due.map((t:any)=><div key={t.id} className="flex gap-3 p-3"><Circle className="mt-0.5 h-4 w-4 text-stone-300"/><div className="min-w-0"><p className="truncate text-xs font-semibold">{t.title}</p><p className={`mt-1 text-[10px] ${t.dueDate&&t.dueDate<today?"text-red-700":"text-stone-500"}`}>{t.priority||"Medium"} · {t.estimatedTime||0}m · {t.dueDate||"Not scheduled"}</p></div></div>)}{!due.length&&<Good text="No open tasks."/>}</div></section>
+      <section className="rounded-2xl border bg-white p-4"><h3 className="flex items-center gap-2 text-sm font-semibold"><WalletCards className="h-4 w-4 text-emerald-700"/>Money this month</h3><div className="mt-3 grid grid-cols-2 gap-2"><Small label="Income" value={zar(finance.income)}/><Small label="Expenses" value={zar(finance.expenses)}/><Small label="Paid commitments" value={zar(finance.payments)}/><Small label="Still unpaid" value={zar(finance.unpaidCommitments)}/></div><div className="mt-3 rounded-xl bg-stone-50 p-3 text-xs"><div className="flex justify-between"><span>Recorded bank cash</span><strong>{zar(finance.cash)}</strong></div><div className="mt-2 flex justify-between"><span>Safe discretionary now</span><strong className="text-emerald-700">{zar(finance.safeDiscretionary)}</strong></div><div className="mt-2 flex justify-between"><span>Safe debt overpayment</span><strong>{zar(finance.safeDebtOverpayment)}</strong></div></div>{command.freshness?.stale&&<p className="mt-2 text-[10px] text-amber-700">Some account balances are stale; update them before relying on safe-cash figures.</p>}<button onClick={()=>onNavigate("operations")} className="mt-3 flex items-center gap-1 text-xs font-bold text-emerald-700">Open full finances <ArrowRight className="h-3 w-3"/></button></section>
+      <section className="rounded-2xl border bg-white p-4"><h3 className="flex items-center gap-2 text-sm font-semibold"><Flame className="h-4 w-4 text-orange-600"/>Today’s rhythm</h3><div className="mt-3 grid grid-cols-2 gap-2"><Small label="Habits" value={`${habitDone}/${data.habits.length}`}/><Small label="Spending" value={zar(command.day?.summary?.spending||0)}/></div><p className="mt-3 text-xs text-stone-500">{activeFocus?`Focus active: ${activeFocus.title}`:highestGoal?`Top goal: ${highestGoal.title}`:"No active goal recorded."}</p>{recentSpending.map((item:any)=><p key={item.id} className="mt-2 truncate text-[10px] text-stone-500">{item.title} · {zar(item.amount)}</p>)}<button onClick={()=>openSection("planner")} className="mt-3 text-xs font-bold text-orange-700">Open unified day</button></section>
     </div>
-  );
+
+    <div className="grid gap-4 md:grid-cols-2">
+      <section className="rounded-2xl border bg-white p-4"><h3 className="flex items-center gap-2 text-sm font-semibold"><AlertTriangle className="h-4 w-4 text-amber-600"/>Attention inbox <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] text-amber-700">{alerts.length}</span></h3><p className="mt-1 text-[10px] text-stone-500">Current issues from finance, planning, work, imports and AI memory.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{alerts.map((a:any)=><article key={a.id} className={`relative rounded-xl border p-3 ${a.priority==="high"?"border-red-100 bg-red-50":"border-amber-100 bg-amber-50"}`}><button onClick={()=>void dismiss(a.id)} className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-md" aria-label={`Dismiss ${a.title}`}><X className="h-3.5 w-3.5"/></button><strong className="block pr-8 text-xs">{a.title}</strong><p className="mt-1 text-[10px] text-stone-600">{a.description}</p>{a.target&&<button onClick={()=>openSection(a.target,a.category==="finance"?"overview":undefined)} className="mt-2 text-[9px] font-bold uppercase text-stone-600">Open {a.category}</button>}</article>)}{!alerts.length&&<Good text="No active alerts."/>}</div></section>
+      <section className="rounded-2xl border bg-white p-4"><h3 className="flex items-center gap-2 text-sm font-semibold"><Brain className="h-4 w-4 text-purple-600"/>AI readiness</h3><div className="mt-3 grid grid-cols-3 gap-2"><Small label="Active memories" value={String(context.memory?.active||0)}/><Small label="Confirmed" value={String(context.memory?.userConfirmed||0)}/><Small label="Pending actions" value={String(command.actions?.length||0)}/></div><p className="mt-3 text-xs text-stone-500">LifeOS AI receives your unified goals, task, routine, work and finance context. Calculations remain deterministic and writes require approval.</p><button onClick={()=>onNavigate("chat")} className="mt-3 flex items-center gap-1 text-xs font-bold text-purple-700">Ask LifeOS about today <ArrowRight className="h-3 w-3"/></button></section>
+    </div>
+  </div>;
 }
+
+function Metric({label,value,warn=false}:{label:string,value:any,warn?:boolean}){return <div className="rounded-xl border bg-white p-3"><span className="block text-[9px] uppercase text-stone-500">{label}</span><strong className={`mt-1 block truncate text-lg ${warn?"text-red-700":"text-stone-900"}`}>{value}</strong></div>}
+function Small({label,value}:{label:string,value:string}){return <div className="rounded-lg border p-2"><span className="block text-[9px] text-stone-500">{label}</span><strong className="text-xs">{value}</strong></div>}
+function Header({icon:Icon,title,action,onClick}:any){return <div className="flex justify-between border-b p-4"><h3 className="flex items-center gap-2 text-sm font-semibold"><Icon className="h-4 w-4 text-blue-700"/>{title}</h3><button onClick={onClick} className="text-xs text-blue-700">{action}</button></div>}
+function Good({text}:{text:string}){return <div className="p-5 text-center text-xs text-emerald-700"><CheckCircle2 className="mx-auto mb-1 h-4 w-4"/>{text}</div>}

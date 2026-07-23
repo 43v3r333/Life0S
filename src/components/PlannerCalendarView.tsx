@@ -1,377 +1,42 @@
-import React, { useState, useEffect } from "react";
-import { Clock, Plus, Layers, DollarSign, Heart, Activity, CheckCircle2, Moon, Sparkles, Star } from "lucide-react";
-import { ScheduledItem } from "../types";
+import React,{useEffect,useMemo,useState} from "react";
+import { Activity, ArrowLeft, ArrowRight, Brain, CalendarDays, Check, CheckCircle2, Clock3, Coins, Dumbbell, Flame, Moon, RefreshCw, Save, Sparkles, WalletCards } from "lucide-react";
+import { Badge, EmptyState, MetricCard, PageHeader } from "../ui/primitives";
 
-interface PlannerCalendarProps {
-  onAddSignalREvent: (msg: string) => void;
-  onUpdateScore: () => void;
-}
+interface Props{onAddSignalREvent:(message:string)=>void;onUpdateScore:()=>void}
+const localToday=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Johannesburg",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const moveDate=(date:string,days:number)=>{const next=new Date(`${date}T12:00:00`);next.setDate(next.getDate()+days);return next.toISOString().slice(0,10)};
+const money=new Intl.NumberFormat("en-ZA",{style:"currency",currency:"ZAR"});
+const prayers=["Fajr","Dhuhr","Asr","Maghrib","Isha"];
+const kindIcon:Record<string,any>={shift:Clock3,task:CheckCircle2,"work-task":CheckCircle2,habit:RefreshCw,commitment:Coins,finance:WalletCards,focus:Flame,prayer:Moon};
+const planTone:Record<string,string>={sleep:"border-indigo-200 bg-indigo-50",work:"border-blue-200 bg-blue-50",focus:"border-violet-200 bg-violet-50",health:"border-emerald-200 bg-emerald-50",relax:"border-amber-200 bg-amber-50",meal:"border-orange-200 bg-orange-50",commute:"border-stone-300 bg-stone-50",routine:"border-teal-200 bg-teal-50"};
+const hours=(minutes:number)=>minutes>=60?`${Math.floor(minutes/60)}h${minutes%60?` ${minutes%60}m`:""}`:`${minutes}m`;
 
-export default function PlannerCalendarView({ onAddSignalREvent, onUpdateScore }: PlannerCalendarProps) {
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
-  const [calcMethod, setCalcMethod] = useState("ISNA");
-  const [location, setLocation] = useState("London, UK");
-
-  // Logging States
-  const [salahLogs, setSalahLogs] = useState({
-    Fajr: true,
-    Dhuhr: true,
-    Asr: false,
-    Maghrib: false,
-    Isha: false
-  });
-
-  const [workoutType, setWorkoutType] = useState("Cardio");
-  const [workoutDuration, setWorkoutDuration] = useState("30");
-  const [hrvValue, setHrvValue] = useState("75");
-
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [expenseCategory, setExpenseCategory] = useState("learning");
-  const [expenseDesc, setExpenseDesc] = useState("");
-
-  const [schedule, setSchedule] = useState<ScheduledItem[]>([
-    { id: "s1", time: "04:15", title: "Fajr Congregational Prayer (Deen Boundary)", category: "deen", status: "completed" },
-    { id: "s2", time: "07:00", title: "Cardiovascular Workout & HRV telemetry log", category: "health", status: "completed" },
-    { id: "s3", time: "09:00", title: "Halal Assets portfolio rebalancing & double check", category: "finance", status: "pending" },
-    { id: "s4", time: "11:00", title: "Technical Architecture refactoring - Core Command", category: "career", status: "pending" },
-    { id: "s5", time: "13:10", title: "Dhuhr Prayer window consistency audit", category: "deen", status: "completed" },
-    { id: "s6", time: "15:30", title: "Study plan: Islamic Commercial Law reading", category: "learning", status: "pending" },
-    { id: "s7", time: "18:00", title: "Marital Chore Matrix sync - dinner & kitchen help", category: "family", status: "pending" }
-  ]);
-
-  // Handle logging Salah
-  const handleSalahToggle = async (prayer: keyof typeof salahLogs) => {
-    const updated = !salahLogs[prayer];
-    setSalahLogs((prev) => ({ ...prev, [prayer]: updated }));
-
-    // Send domain event to backend
-    try {
-      const res = await fetch("/api/deen/salah", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prayer, status: updated })
-      });
-      if (res.ok) {
-        onAddSignalREvent(`Malki (Salah Tracker) published SalahLoggedEvent { Prayer = "${prayer as string}", ConsistencyScore = 95.8 }`);
-        onUpdateScore();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Handle Workout Log
-  const handleWorkoutLog = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch("/api/health/workout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: workoutType, duration: workoutDuration, hrv: hrvValue })
-      });
-      if (res.ok) {
-        onAddSignalREvent(`HealthSentinel published AthleticMetricsLoggedEvent { Workout = "${workoutType}", Duration = ${workoutDuration}m, HRV = ${hrvValue}ms }`);
-        onUpdateScore();
-        alert("Workout metrics logged securely to database.");
-        setWorkoutDuration("");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Handle expense log
-  const handleExpenseLog = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!expenseAmount || isNaN(Number(expenseAmount))) {
-      alert("Please provide a valid transaction amount.");
-      return;
-    }
-    try {
-      const res = await fetch("/api/finance/expense", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: Number(expenseAmount), category: expenseCategory, description: expenseDesc })
-      });
-      if (res.ok) {
-        onAddSignalREvent(`WealthArchitect published LedgerTransactionAddedEvent { Amount = £${expenseAmount}, Category = "${expenseCategory}", ShariahCheck = "PASSED" }`);
-        onUpdateScore();
-        alert("Halal transaction added to double-entry ledger.");
-        setExpenseAmount("");
-        setExpenseDesc("");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleToggleSchedule = (id: string) => {
-    setSchedule((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, status: item.status === "completed" ? "pending" : "completed" }
-          : item
-      )
-    );
-    onAddSignalREvent(`PlannerEngine updated task ${id} status transition.`);
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      {/* Col 1 & 2: Planner Schedule & Calendar */}
-      <div className="lg:col-span-2 space-y-6">
-        
-        {/* Date Selection Bar */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Clock className="h-5 w-5 text-stone-500" />
-            <div>
-              <h3 className="text-xs font-semibold text-stone-900 font-mono">PLANNER CONSOLE</h3>
-              <p className="text-[10px] text-stone-500 uppercase font-mono mt-0.5">ACTIVE HORIZON: JULY 2026</p>
-            </div>
-          </div>
-
-          <div className="flex space-x-1.5 overflow-x-auto">
-            {Array.from({ length: 7 }).map((_, idx) => {
-              const dayNum = 6 + idx;
-              const isSelected = selectedDay === dayNum;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedDay(dayNum)}
-                  className={`w-9 h-9 rounded-lg font-mono text-xs flex flex-col items-center justify-center transition ${
-                    isSelected ? "bg-stone-900 text-white font-bold shadow-md" : "bg-stone-50 text-stone-600 hover:bg-stone-100 border border-stone-150"
-                  }`}
-                >
-                  <span className="text-[8px] font-bold uppercase opacity-60">Mon</span>
-                  <span className="mt-0.5">{dayNum}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Dynamic Schedule List */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between border-b border-stone-100 pb-3 mb-4">
-            <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono">Today's Focus Horizon</h3>
-            <span className="text-[9px] bg-stone-100 text-stone-600 px-2 py-0.5 rounded border border-stone-200 font-mono">
-              7 SCHEDULE_ENTITIES
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {schedule.map((item) => {
-              const isComp = item.status === "completed";
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => handleToggleSchedule(item.id)}
-                  className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
-                    isComp ? "bg-stone-50/75 border-stone-150 opacity-65" : "bg-[#fbfbfa] border-stone-200 hover:border-stone-400"
-                  }`}
-                >
-                  <div className="flex items-start space-x-3.5">
-                    <span className="text-[11px] font-mono text-stone-400 mt-0.5">{item.time}</span>
-                    <div>
-                      <h4 className={`text-xs font-semibold ${isComp ? "line-through text-stone-500" : "text-stone-900"}`}>
-                        {item.title}
-                      </h4>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <span className={`text-[8px] font-mono uppercase px-1 rounded ${
-                          item.category === "deen" ? "bg-emerald-50 text-emerald-800" : item.category === "health" ? "bg-red-50 text-red-800" : item.category === "finance" ? "bg-amber-50 text-amber-800" : "bg-stone-100 text-stone-600"
-                        }`}>
-                          {item.category}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <CheckCircle2 className={`h-5 w-5 ${isComp ? "text-emerald-500" : "text-stone-300 hover:text-stone-500"}`} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Col 3: Calculation config & Logging telemetry metrics */}
-      <div className="space-y-6">
-        
-        {/* Prayer Time Config Panel */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
-          <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono mb-4 flex items-center space-x-1.5">
-            <Moon className="h-4 w-4" />
-            <span>Salah Horizons</span>
-          </h3>
-
-          <div className="space-y-4 text-xs leading-normal">
-            <div>
-              <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">CALCULATION_METHOD</label>
-              <select
-                value={calcMethod}
-                onChange={(e) => {
-                  setCalcMethod(e.target.value);
-                  onAddSignalREvent(`DeenAuditor updated prayer calculation method to: ${e.target.value}`);
-                }}
-                className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1.5 focus:outline-none text-stone-700 text-xs font-mono"
-              >
-                <option value="ISNA">Islamic Society of North America (ISNA)</option>
-                <option value="MWL">Muslim World League (MWL)</option>
-                <option value="UmmAlQura">Umm al-Qura, Makkah</option>
-                <option value="Karachi">University of Islamic Sciences, Karachi</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">LOCATION_DOCK</label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. London, UK"
-                className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1.5 focus:outline-none text-stone-700 text-xs font-mono"
-              />
-            </div>
-
-            {/* Salah Checklist Tracker */}
-            <div className="pt-3 border-t border-stone-100">
-              <span className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-2">Today's Prayer Telemetry Logs</span>
-              <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[10px]">
-                {(Object.keys(salahLogs) as Array<keyof typeof salahLogs>).map((prayer) => {
-                  const active = salahLogs[prayer];
-                  return (
-                    <button
-                      key={prayer}
-                      onClick={() => handleSalahToggle(prayer)}
-                      className={`py-2 rounded-lg border transition ${
-                        active ? "bg-emerald-950 text-emerald-400 border-emerald-500/50" : "bg-stone-50 text-stone-400 border-stone-200 hover:border-stone-400"
-                      }`}
-                    >
-                      <div className="font-bold">{(prayer as string)[0]}</div>
-                      <div className="text-[8px] mt-0.5 uppercase opacity-60">{(prayer as string).slice(1, 3)}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bio-metric logs */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
-          <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono mb-3.5 flex items-center space-x-1.5">
-            <Heart className="h-4 w-4 text-red-500" />
-            <span>Health & Vitality Logger</span>
-          </h3>
-
-          <form onSubmit={handleWorkoutLog} className="space-y-3.5 text-xs">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">ACTIVITY</label>
-                <select
-                  value={workoutType}
-                  onChange={(e) => setWorkoutType(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-                >
-                  <option value="Cardio">Cardio / Run</option>
-                  <option value="Weightlifting">Strength Training</option>
-                  <option value="HIIT">HIIT Interval</option>
-                  <option value="Cycling">Cycling</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">DURATION (MIN)</label>
-                <input
-                  type="text"
-                  value={workoutDuration}
-                  onChange={(e) => setWorkoutDuration(e.target.value)}
-                  placeholder="e.g. 45"
-                  className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">HRV SCORE (MS)</label>
-              <input
-                type="text"
-                value={hrvValue}
-                onChange={(e) => setHrvValue(e.target.value)}
-                placeholder="75"
-                className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-stone-900 hover:bg-stone-800 text-white font-mono text-[10px] font-bold py-2 px-3 rounded-lg border border-stone-950 transition uppercase flex items-center justify-center space-x-1"
-            >
-              <Activity className="h-3.5 w-3.5" />
-              <span>Log Biometrics</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Ledger transaction logs */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
-          <h3 className="text-xs font-semibold text-stone-500 tracking-wider uppercase font-mono mb-3.5 flex items-center space-x-1.5">
-            <DollarSign className="h-4 w-4 text-amber-600" />
-            <span>Double-Entry Ledger</span>
-          </h3>
-
-          <form onSubmit={handleExpenseLog} className="space-y-3.5 text-xs">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">VALUE (£)</label>
-                <input
-                  type="text"
-                  value={expenseAmount}
-                  onChange={(e) => setExpenseAmount(e.target.value)}
-                  placeholder="e.g. 24.50"
-                  className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-                />
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">CATEGORY</label>
-                <select
-                  value={expenseCategory}
-                  onChange={(e) => setExpenseCategory(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-                >
-                  <option value="learning">Books / Courses</option>
-                  <option value="charity">Zakat / Sadaqah</option>
-                  <option value="household">Household bills</option>
-                  <option value="halal_portfolio">Halal Equity Asset</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[9px] font-bold text-stone-400 uppercase font-mono mb-1">MEMO / DESCRIPTION</label>
-              <input
-                type="text"
-                value={expenseDesc}
-                onChange={(e) => setExpenseDesc(e.target.value)}
-                placeholder="Purchase study textbooks"
-                className="w-full bg-stone-50 border border-stone-200 rounded px-2 py-1 focus:outline-none text-stone-700 font-mono text-[11px]"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-stone-900 hover:bg-stone-800 text-white font-mono text-[10px] font-bold py-2 px-3 rounded-lg border border-stone-950 transition uppercase flex items-center justify-center space-x-1"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Log Transaction</span>
-            </button>
-          </form>
-        </div>
-
-      </div>
-
-    </div>
-  );
+export default function PlannerCalendarView({onAddSignalREvent,onUpdateScore}:Props){
+ const params=new URLSearchParams(window.location.search),[date,setDate]=useState(/^\d{4}-\d{2}-\d{2}$/.test(params.get("date")||"")?params.get("date")!:localToday());
+ const [data,setData]=useState<any>(null),[busy,setBusy]=useState(false),[review,setReview]=useState({summary:"",energy:3}),[workout,setWorkout]=useState({type:"Workout",duration:"",hrv:""}),[expense,setExpense]=useState({amount:"",category:"Daily spending",description:""});
+ const load=async()=>{setBusy(true);try{const response=await fetch(`/api/personal/daily-state?date=${date}`,{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error?.message||result.error||"Daily records could not load.");setData(result);setReview({summary:result.day?.review?.summary||"",energy:result.day?.review?.energy||3})}finally{setBusy(false)}};
+ useEffect(()=>{const url=new URL(window.location.href);url.searchParams.set("date",date);window.history.replaceState({},"",url);void load()},[date]);
+ const run=async(url:string,body:any,message:string)=>{setBusy(true);try{const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error?.message||result.error||"Update failed.");onAddSignalREvent(message);onUpdateScore();await load()}catch(error:any){onAddSignalREvent(`Daily update failed: ${error.message}`)}finally{setBusy(false)}};
+ const timeline=data?.day?.timeline||[],groups=useMemo(()=>["now","overdue","today","completed"].map(group=>({group,items:timeline.filter((item:any)=>item.group===group)})),[timeline]);
+ const complete=async(item:any)=>{if(item.kind==="task")await run("/api/tasks/toggle",{id:item.sourceId},`Completed task: ${item.title}`);else if(item.kind==="habit")await run("/api/habits/log",{id:item.sourceId,date},`Completed habit: ${item.title}`)};
+ const submitReview=async(event:React.FormEvent)=>{event.preventDefault();const carry=timeline.filter((item:any)=>item.kind==="task"&&item.status==="overdue").map((item:any)=>item.sourceId);await run("/api/personal/daily-review",{date,...review,wins:[],carryForwardTaskIds:carry},`Saved review for ${date}.`)};
+ if(!data)return <div className="life-card"><div className="life-state"><RefreshCw className="animate-spin"/>Loading authoritative day…</div></div>;
+ const shift=data.execution.currentShift,summary=data.day.summary;
+ const plan=data.fullDayPlan;
+ return <div className="space-y-4">
+  <PageHeader eyebrow="Authoritative daily execution" title="Daily" description="Tasks, Team C shifts, habits, commitments, prayer, health, spending and focus from saved records." actions={<button onClick={()=>void load()} className="life-button-secondary flex items-center gap-2"><RefreshCw className={busy?"animate-spin":""}/>Refresh</button>}/>
+  <section className="life-card flex flex-wrap items-center justify-between gap-3 p-3"><button className="life-button-secondary" onClick={()=>setDate(moveDate(date,-1))} aria-label="Previous day"><ArrowLeft className="h-4 w-4"/></button><div className="text-center"><span className="life-eyebrow">Selected day</span><strong className="mt-1 block text-sm">{new Date(`${date}T12:00:00`).toLocaleDateString("en-ZA",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong></div><div className="flex gap-2"><button className="life-button-secondary" disabled={date===localToday()} onClick={()=>setDate(localToday())}>Today</button><button className="life-button-secondary" onClick={()=>setDate(moveDate(date,1))} aria-label="Next day"><ArrowRight className="h-4 w-4"/></button></div></section>
+  <div className="grid grid-cols-2 gap-2 lg:grid-cols-6"><MetricCard label="Day type" value={plan.shiftContext.afterNight?"Night recovery":shift?.type||"Not recorded"} detail={plan.shiftContext.afterNight?"Off today · night shift ended this morning":shift?.start?`${shift.start}–${shift.end}`:date.endsWith("-00")?"":"Team C · Sundays off"} tone={plan.shiftContext.afterNight?"warning":"neutral"}/><MetricCard label="Scheduled" value={summary.scheduled}/><MetricCard label="Overdue" value={summary.overdue} tone={summary.overdue?"danger":"success"}/><MetricCard label="Completed" value={summary.completed}/><MetricCard label="Focus" value={`${summary.focusMinutes}m`}/><MetricCard label="Spending" value={money.format(summary.spending)}/></div>
+  <section className="life-card overflow-hidden"><header className="flex flex-wrap items-start justify-between gap-3 border-b p-4"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><Clock3 className="h-4 w-4 text-violet-700"/>Every-moment plan</h2><p className="mt-1 text-xs text-stone-500">All 1,440 minutes are accounted for around Team C work, protected sleep, health, study, tasks, meals and real relaxation.</p></div><div className="flex flex-wrap gap-2">{plan.shiftContext.afterNight&&<Badge tone="warning">Post-night recovery day</Badge>}<Badge tone={plan.coverage.ok?"success":"danger"}>{plan.coverage.totalMinutes} / 1,440 minutes</Badge></div></header><div className="grid grid-cols-2 gap-2 border-b bg-stone-50 p-3 sm:grid-cols-5"><MetricCard label="Sleep" value={hours(plan.summary.sleepMinutes)} tone="authoritative"/><MetricCard label="Work" value={hours(plan.summary.workMinutes)}/><MetricCard label="Focused tasks" value={hours(plan.summary.focusMinutes)} tone="ai"/><MetricCard label="Health" value={hours(plan.summary.healthMinutes)} tone="success"/><MetricCard label="Relaxing" value={hours(plan.summary.relaxMinutes)} tone="warning"/></div>{plan.assumptions.length>0&&<div className="border-b bg-amber-50 px-4 py-3 text-[10px] text-amber-900">{plan.assumptions.join(" ")}</div>}<div className="grid gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">{plan.blocks.map((item:any)=><article key={`${item.start}-${item.title}`} className={`rounded-xl border p-3 ${planTone[item.category]||"bg-white"}`}><div className="flex items-start gap-3"><span className="min-w-[88px] rounded-lg bg-white/80 px-2 py-1 text-center text-xs font-bold tabular-nums">{item.start}–{item.end}</span><div className="min-w-0"><strong className="block text-xs">{item.title}</strong><span className="mt-1 block text-[9px] uppercase text-stone-500">{item.category} · {hours(item.plannedMinutes)}{item.protected?" · protected":""}</span>{item.description&&<p className="mt-1 text-[10px] leading-4 text-stone-600">{item.description}</p>}</div></div></article>)}</div></section>
+  <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)]">
+   <div className="life-card overflow-hidden"><header className="flex items-center justify-between border-b p-4"><div><h2 className="text-sm font-semibold">Unified timeline</h2><p className="mt-1 text-[10px] text-stone-500">Every item links to an authoritative LifeOS record.</p></div><Badge tone="authoritative">Current records</Badge></header><div className="divide-y">{groups.map(({group,items})=>items.length>0&&<section key={group} className="p-4"><h3 className="mb-2 text-[9px] font-bold uppercase tracking-wider text-stone-500">{group}</h3><div className="grid gap-2">{items.map((item:any)=>{const Icon=kindIcon[item.kind]||CalendarDays;return <article key={item.id} className={`flex items-center gap-3 rounded-xl border p-3 ${item.status==="overdue"?"border-red-200 bg-red-50/50":item.status==="completed"?"bg-stone-50 opacity-75":"bg-white"}`}><span className="grid h-9 w-9 place-items-center rounded-lg bg-stone-100"><Icon className="h-4 w-4"/></span><div className="min-w-0 flex-1"><strong className="block truncate text-xs">{item.title}</strong><span className="mt-1 block text-[9px] text-stone-500">{item.kind.replace("-"," ")}{item.time?` · ${item.time}${item.endTime?`–${item.endTime}`:""}`:""}{item.amount?` · ${money.format(item.amount)}`:""}</span></div><Badge tone={item.status==="overdue"?"danger":item.status==="completed"?"success":item.status==="active"?"ai":"neutral"}>{item.status}</Badge>{["task","habit"].includes(item.kind)&&item.status!=="completed"&&<button disabled={busy} onClick={()=>void complete(item)} className="grid h-10 w-10 place-items-center rounded-lg border" aria-label={`Complete ${item.title}`}><Check className="h-4 w-4"/></button>}</article>})}</div></section>)}{!timeline.length&&<EmptyState title="Nothing is scheduled or recorded" description="Add tasks, shifts, habits, commitments, or activity to build this day."/>}</div></div>
+   <aside className="space-y-4">
+    <section className="life-card p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><Moon className="h-4 w-4 text-emerald-700"/>Prayer</h2><div className="mt-3 grid grid-cols-2 gap-2">{prayers.map(prayer=>{const done=timeline.some((item:any)=>item.kind==="prayer"&&item.title===prayer);return <button disabled={busy||done} key={prayer} onClick={()=>void run("/api/deen/salah",{prayer,status:true,date},`Recorded ${prayer} for ${date}.`)} className={`min-h-11 rounded-lg border px-3 text-xs font-bold ${done?"bg-emerald-50 text-emerald-800":"bg-white"}`}>{done?<CheckCircle2 className="mr-1 inline h-3.5 w-3.5"/>:null}{prayer}</button>})}</div></section>
+    <section className="life-card p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><Dumbbell className="h-4 w-4 text-orange-700"/>Health check-in</h2><form className="mt-3 grid grid-cols-2 gap-2" onSubmit={event=>{event.preventDefault();void run("/api/health/workout",{...workout,date},`Recorded ${workout.type} for ${date}.`);setWorkout({...workout,duration:"",hrv:""})}}><input aria-label="Workout type" value={workout.type} onChange={e=>setWorkout({...workout,type:e.target.value})} className="rounded-lg border px-3 py-2 text-xs"/><input aria-label="Duration in minutes" required type="number" min="1" placeholder="Minutes" value={workout.duration} onChange={e=>setWorkout({...workout,duration:e.target.value})} className="rounded-lg border px-3 py-2 text-xs"/><input aria-label="Optional HRV" type="number" placeholder="HRV optional" value={workout.hrv} onChange={e=>setWorkout({...workout,hrv:e.target.value})} className="rounded-lg border px-3 py-2 text-xs"/><button className="life-button-primary">Save health</button></form></section>
+    <section className="life-card p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><WalletCards className="h-4 w-4 text-blue-700"/>Quick spending</h2><form className="mt-3 grid grid-cols-2 gap-2" onSubmit={event=>{event.preventDefault();void run("/api/finance/expense",{...expense,date,amount:Number(expense.amount)},`Recorded daily spending for ${date}.`);setExpense({...expense,amount:"",description:""})}}><input required aria-label="Expense amount" min="0.01" step="0.01" type="number" placeholder="Amount (R)" value={expense.amount} onChange={e=>setExpense({...expense,amount:e.target.value})} className="rounded-lg border px-3 py-2 text-xs"/><select aria-label="Expense category" value={expense.category} onChange={e=>setExpense({...expense,category:e.target.value})} className="rounded-lg border px-3 py-2 text-xs">{["Daily spending","Food & snacks","Transport","Groceries","Airtime","Household","Other"].map(value=><option key={value}>{value}</option>)}</select><input aria-label="Expense description" placeholder="Description" value={expense.description} onChange={e=>setExpense({...expense,description:e.target.value})} className="rounded-lg border px-3 py-2 text-xs"/><button className="life-button-primary">Save spending</button></form></section>
+   </aside>
+  </section>
+  <section className="life-card p-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-700"/><div><h2 className="text-sm font-semibold">End-of-day review</h2><p className="text-[10px] text-stone-500">Saving carries currently overdue personal tasks to the next day and records your confirmed reflection.</p></div></div><form onSubmit={submitReview} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_auto]"><textarea value={review.summary} onChange={e=>setReview({...review,summary:e.target.value})} rows={2} placeholder="Wins, difficulties, or what should change tomorrow" className="rounded-xl border px-3 py-2 text-sm"/><label className="text-[10px] font-bold text-stone-500">Energy · {review.energy}/5<input className="mt-2 w-full" type="range" min="1" max="5" value={review.energy} onChange={e=>setReview({...review,energy:Number(e.target.value)})}/></label><button disabled={busy} className="life-button-primary flex items-center gap-2 self-end"><Save className="h-4 w-4"/>Save review</button></form></section>
+  <section className="life-card p-4"><div className="flex items-center gap-2"><Brain className="h-4 w-4 text-violet-700"/><div><h2 className="text-sm font-semibold">AI day planning</h2><p className="text-[10px] text-stone-500">Ask LifeOS from the page copilot to order or reduce this day. Any proposed record changes remain approval-only.</p></div></div></section>
+ </div>
 }
