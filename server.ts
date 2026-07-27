@@ -9,7 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
-import { initDb, saveDb, Goal, getStorageStatus, verifyStorage } from "./server/db.js";
+import { initDb, saveDb, Goal, getStorageStatus, toPersistedState, verifyStorage } from "./server/db.js";
 import { createSqliteSnapshot, deletePersistentSession, loadPersistentSessions, savePersistentSession, sessionTokenHash } from "./server/sqliteStore.js";
 import { createSafeVaultState, loadRuntimeConfiguration, toVaultStatus, validateRuntimeConfiguration } from "./server/config.js";
 import { cacheStore } from "./server/cache.js";
@@ -26,7 +26,8 @@ import { createSearchRouter } from "./server/routes/searchRoutes.js";
 import { apiErrorHandler, requireJsonObject } from "./server/http.js";
 import { buildAiDiagnostics, excludeMemoriesSupersededByCurrentRecords } from "./server/aiDiagnostics.js";
 import { buildSystemIntegrity } from "./server/integrityService.js";
-import { verifyBackup } from "./server/backupVerification.js";
+import { REQUIRED_BACKUP_ARTIFACTS, verifyBackup } from "./server/backupVerification.js";
+import { restoreBundleAtomically } from "./server/backupRestore.js";
 import { parseProviderJson } from "./server/validation.js";
 import { createBusinessRouter } from "./server/routes/businessRoutes.js";
 import { buildCodebaseGuide } from "./server/codebaseService.js";
@@ -1484,16 +1485,19 @@ async function startServer() {
     const bundle = path.join(backupDir, filename);
     await fs.mkdir(bundle, { recursive: true, mode: 0o700 });
     const stateFile = path.join(bundle, "state.json");
-    await fs.writeFile(stateFile, JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, state: { ...state, vault: {} } }, null, 2), { encoding: "utf8", mode: 0o600 });
+    await fs.writeFile(stateFile, JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, state: toPersistedState(state) }, null, 2), { encoding: "utf8", mode: 0o600 });
     createSqliteSnapshot(path.join(bundle, "lifeos.sqlite"));
-    for (const relative of ["qdrant.json", "statements"]) {
+    for (const relative of ["statements", "balance-screenshots"]) {
       const source = lifeOsDataPath(relative), destination = path.join(bundle, relative);
-      try { await fs.cp(source, destination, { recursive: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; }
+      await fs.mkdir(destination, { recursive: true, mode: 0o700 });
+      try { await fs.cp(source, destination, { recursive: true, force: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; }
     }
+    try { await fs.copyFile(lifeOsDataPath("qdrant.json"), path.join(bundle, "qdrant.json")); }
+    catch (error: any) { if (error?.code === "ENOENT") await fs.writeFile(path.join(bundle, "qdrant.json"), "[]", { mode: 0o600 }); else throw error; }
     const files: Array<{ path: string; size: number; sha256: string }> = [];
     const visit = async (directory: string) => { for (const entry of await fs.readdir(directory, { withFileTypes: true })) { const absolute = path.join(directory, entry.name); if (entry.isDirectory()) await visit(absolute); else if (entry.name !== "manifest.json") { const bytes = await fs.readFile(absolute); files.push({ path: path.relative(bundle, absolute), size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") }); } } };
     await visit(bundle);
-    await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, schemaVersion: getStorageStatus().schemaVersion, files }, null, 2), { encoding: "utf8", mode: 0o600 });
+    await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, schemaVersion: getStorageStatus().schemaVersion, requiredArtifacts: REQUIRED_BACKUP_ARTIFACTS, files }, null, 2), { encoding: "utf8", mode: 0o600 });
     return filename;
   };
 
@@ -2808,44 +2812,29 @@ async function startServer() {
     const filename = path.basename(req.params.filename);
     if (!/^lifeos-backup-[\w.-]+(?:\.json)?$/.test(filename)) return res.status(400).json({ error: "Invalid backup filename." });
     const backupPath = lifeOsDataPath("backups", filename);
-    let safetyFilename = "";
     const previousState = structuredClone({ ...state, vault: {} });
     const runtimeVault = state.vault;
-    try {
-      const info = await fs.stat(backupPath);
-      const checked = await verifyBackup(backupPath);
-      safetyFilename = await createLocalBackup("automatic-pre-restore");
+    const applyRestoredState = async (restoredState: Record<string, any>, audit = false) => {
       for (const key of Object.keys(state)) if (key !== "vault") delete (state as any)[key];
-      Object.assign(state, checked.state, { vault: runtimeVault });
-      state.financeEntries = state.financeEntries || [];
-      state.incomeSources = state.incomeSources || [];
-      state.monthlyBudgets = state.monthlyBudgets || [];
-      state.salaryBreakdowns = state.salaryBreakdowns || [];
-      state.bankAccounts = state.bankAccounts || [];
-      state.debts = state.debts || [];
-      state.liabilityPayments = state.liabilityPayments || [];
-      state.liabilityAdjustments = state.liabilityAdjustments || [];
-      state.bankStatementAnalyses = state.bankStatementAnalyses || [];
-      state.bankStatementDocuments = state.bankStatementDocuments || [];
-      state.merchantCategoryRules = state.merchantCategoryRules || [];
-      state.aiActionProposals = state.aiActionProposals || [];
-      state.aiMemories = state.aiMemories || [];
-      state.aiFinanceBriefings = state.aiFinanceBriefings || [];
-      state.operationAudit = state.operationAudit || [];
-      auditOperation("backup_restored", { filename });
-      await saveDb();
-      if (info.isDirectory()) {
-        for (const relative of ["qdrant.json", "statements"]) { try { await fs.cp(path.join(backupPath, relative), lifeOsDataPath(relative), { recursive: true, force: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; } }
+      Object.assign(state, restoredState, { vault: runtimeVault });
+      for (const key of ["financeEntries", "incomeSources", "monthlyBudgets", "salaryBreakdowns", "bankAccounts", "debts", "liabilityPayments", "liabilityAdjustments", "bankStatementAnalyses", "bankStatementDocuments", "balanceScreenshotDocuments", "merchantCategoryRules", "aiActionProposals", "aiMemories", "aiFinanceBriefings", "operationAudit"]) {
+        (state as any)[key] = (state as any)[key] || [];
       }
-      const verification = verifyStorage();
-      if (!verification.ok) throw Object.assign(new Error("Restored state did not reconcile."), { status: 409, details: verification.errors });
-      res.json({ status: "restored", filename, safetyBackup: safetyFilename, debts: state.debts.length, entries: state.financeEntries.length, verification, restartRecommended: info.isDirectory() });
+      if (audit) auditOperation("backup_restored", { filename });
+      await saveDb();
+    };
+    try {
+      const result = await restoreBundleAtomically({
+        backupPath,
+        dataDirectory: lifeOsDataDirectory(),
+        createSafetyBackup: () => createLocalBackup("automatic-pre-restore"),
+        activateState: (restoredState) => applyRestoredState(restoredState, true),
+        rollbackState: () => applyRestoredState(previousState),
+        verifyActivatedState: verifyStorage,
+      });
+      res.json({ status: "restored", filename, safetyBackup: result.safetyBackup, debts: state.debts.length, entries: state.financeEntries.length, verification: result.verification, restartRecommended: true });
     } catch (error: any) {
-      for (const key of Object.keys(state)) if (key !== "vault") delete (state as any)[key];
-      Object.assign(state, previousState, { vault: runtimeVault });
-      await saveDb().catch(rollbackError => console.error("[BACKUP] State rollback failed:", rollbackError));
       if (error?.code === "ENOENT") return res.status(404).json({ error: { code: "BACKUP_NOT_FOUND", message: "Backup not found.", fieldErrors: [], recovery: "Choose an existing backup from the System screen." } });
-      error.recovery ||= `The previous database state was restored${safetyFilename ? ` and safety backup ${safetyFilename} was retained` : ""}.`;
       next(error);
     }
   });

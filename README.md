@@ -27,7 +27,7 @@ npm audit
 - `LIFEOS_DATA_DIR/lifeos.sqlite` is the authoritative transactional store. Production requires an explicit `LIFEOS_DATA_DIR`; development defaults to `data/`.
 - On first upgraded startup, `LIFEOS_DATA_DIR/db.json` is copied to a checksum-labelled rollback artifact, imported, and reconciled before SQLite becomes authoritative.
 - Uploaded statements and screenshots remain files below `LIFEOS_DATA_DIR`; their metadata, ownership, hash, and analysis state are indexed in SQLite.
-- Backup bundles include a consistent SQLite snapshot, uploaded files, the local vector index, a sanitized compatibility state, and a checksum manifest.
+- Backup bundles include a consistent SQLite snapshot, statements, balance screenshots, the local vector index, a sanitized compatibility state, and a checksum manifest. Restore verifies a staged copy before activation, creates a pre-restore safety backup, and rolls database and file artifacts back together on failure.
 - Provider credentials are encrypted separately with the persistent `LIFEOS_VAULT_SECRET` and are never stored in the SQLite application state or ordinary AI prompts.
 - Healthy startup is read-only for application records. Data repair, classification, reconciliation, memory synchronization, and account-balance changes require an explicit API action.
 - Apple Vision OCR is used only on macOS. Linux safely skips Apple-only binaries and uses configured NVIDIA vision; HEIC files remain saved with actionable conversion guidance.

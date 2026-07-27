@@ -185,7 +185,7 @@ The former `/api/v4/*` demonstration routes are retired and return `501 not_conf
 | PUT | `/api/personal/onboarding` | Save finance and work setup answers; blank values remain unknown. |
 | GET | `/api/workbook/snapshot` | Export structured LifeOS data for explicit workbook reconciliation. |
 | GET | `/api/backups` | List checksum-manifest SQLite backup bundles and legacy JSON backups. |
-| POST | `/api/backups` | Create a local bundle containing a consistent SQLite snapshot, upload files, vector index, sanitized state, and checksum manifest. |
+| POST | `/api/backups` | Create a local bundle containing a consistent SQLite snapshot, statements, balance screenshots, vector index, sanitized state, and checksum manifest. |
 
 ### Personal intelligence and finance analysis
 
@@ -283,7 +283,7 @@ Authentication endpoints used by private web and ngrok access:
 | DELETE | `/api/habits/:id` | Delete a habit. |
 | GET | `/api/planning/reviews` | List saved planning reviews. |
 | POST | `/api/planning/ai-review` | Generate and save an AI-assisted planning review. |
-| POST | `/api/backups/:filename/restore` | Check every manifest checksum, restore an explicitly selected LifeOS backup, and reconcile SQLite totals. |
+| POST | `/api/backups/:filename/restore` | Stage and verify all database and file artifacts, create a pre-restore safety backup, activate the selected bundle, reconcile SQLite, and roll back database/uploads together on failure. |
 | POST | `/api/backups/:filename/verify` | Validate backup schema, paths, file sizes, and SHA-256 checksums without changing current data. |
 
 ### Storage and global search

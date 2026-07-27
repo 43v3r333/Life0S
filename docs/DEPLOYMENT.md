@@ -50,6 +50,22 @@ automation evaluation are explicit authenticated API actions. Scheduled
 automation can run after startup only when enabled, and authoritative changes
 remain approval-only.
 
+## Backup and restore safety
+
+Current backup bundles contain `lifeos.sqlite`, sanitized `state.json`,
+`qdrant.json`, `statements/`, and `balance-screenshots/`. The manifest declares
+these required artifacts and records a SHA-256 checksum for every file.
+
+Restore copies the selected bundle into an isolated staging directory and
+verifies its manifest, paths, checksums, SQLite integrity, and application state
+before touching live data. It then creates a verified pre-restore safety backup.
+Live vector and upload artifacts are moved into a rollback workspace before the
+staged replacements are activated; the authoritative state is written through
+the existing SQLite transaction. A reconciliation failure restores both the
+previous database state and every moved file artifact. If rollback itself cannot
+finish, LifeOS retains the safety backup and rollback workspace and returns
+explicit operator recovery guidance instead of deleting recovery material.
+
 ## Linux and WSL OCR
 
 Apple Vision and `sips` are invoked only on macOS. Linux and WSL skip local OCR
