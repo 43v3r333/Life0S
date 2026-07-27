@@ -1,14 +1,15 @@
 # LifeOS HTTP API reference
 
-LifeOS exposes an Express JSON API alongside the Vite application. Unless stated otherwise, send `Content-Type: application/json`; successful responses are JSON. Local development defaults to `http://localhost:3000` (or the port printed by `npm run dev`).
+LifeOS exposes an Express JSON API alongside the Vite application. Unless stated otherwise, send `Content-Type: application/json`; successful responses are JSON. Local development defaults to `http://127.0.0.1:3001` unless configured otherwise.
 
 ## Conventions and current constraints
 
-- The server binds to `127.0.0.1` by default. Do not expose it through `HOST=0.0.0.0` without a real authenticated reverse proxy.
-- There is currently no global authentication middleware. Prototype password login and registration are disabled unless `ENABLE_DEMO_AUTH=true`; they must never be treated as production identity controls.
-- Secrets submitted to `/api/vault/save` are held only in process memory and are deliberately excluded from the JSON persistence file.
-- Most application data is process-local demo state. Restarting the server may reset it.
-- AI-backed endpoints use `GEMINI_API_KEY`; `/api/chat` has an offline fallback, while planning and knowledge AI operations may return `500` when the key is absent.
+- The server binds to `127.0.0.1` by default. Do not expose it through `HOST=0.0.0.0` without production authentication and private-network firewall controls.
+- Production refuses to start unless `LIFEOS_AUTH_REQUIRED=true`, a valid login email/password hash, an explicit `LIFEOS_DATA_DIR`, and a persistent `LIFEOS_VAULT_SECRET` are configured.
+- `/api/auth/login` creates a persistent, expiring HttpOnly session. Except for login/session checks and liveness endpoints, API requests require the authenticated session when authentication is enabled.
+- Secrets submitted to `/api/vault/save` are encrypted under `LIFEOS_DATA_DIR/.secrets.json`; raw values are excluded from SQLite, API status responses, logs, backups, and AI prompts.
+- SQLite under `LIFEOS_DATA_DIR` is authoritative. Healthy startup does not seed, recover, reconcile, classify, or rewrite application records.
+- AI-backed endpoints use configured providers and deterministic fallbacks where documented; AI proposals never become authoritative without approval.
 - `tenantId` defaults to `system-default` on FinanceOS queries. FinanceOS commands accept it in the JSON body.
 - Errors are JSON, usually `{ "error": "message" }`; FinanceOS can return SDK problem details with a `status` field.
 - The server contains both legacy action-style goal routes and newer REST-style goal routes. Because Express evaluates handlers in registration order, duplicate `GET /api/goals` and `POST /api/goals` registrations are compatibility debt; clients should prefer the REST-style routes described under Goals.
@@ -28,8 +29,9 @@ LifeOS exposes an Express JSON API alongside the Vite application. Unless stated
 
 | Method | Path | Input / purpose |
 | --- | --- | --- |
-| POST | `/api/auth/login` | Disabled by default; optional prototype login when `ENABLE_DEMO_AUTH=true`. |
-| POST | `/api/auth/register` | Disabled by default; optional prototype registration when `ENABLE_DEMO_AUTH=true`. |
+| GET | `/api/auth/session` | Return current authentication state and session expiry. |
+| POST | `/api/auth/login` | Authenticate with the configured private email and password. |
+| POST | `/api/auth/logout` | Revoke the current session and clear its cookie. |
 | GET | `/api/auth/sessions` | List known sessions. |
 | POST | `/api/auth/sessions/revoke` | Revoke a session by body `id`. |
 | GET | `/api/vault` | Return configured-secret presence flags, never raw secrets. |

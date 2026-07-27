@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
+import { lifeOsDataDirectory } from "./dataPaths.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = lifeOsDataDirectory();
 const QDRANT_FILE = path.join(DATA_DIR, "qdrant.json");
 
 export interface QdrantPoint {

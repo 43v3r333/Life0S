@@ -34,5 +34,6 @@ const salt = randomBytes(16), hash = scryptSync(password, salt, 64);
 let existing = ""; try { existing = await readFile(".env.local", "utf8"); } catch {}
 const values = new Map(existing.split(/\r?\n/).filter(line => line && !line.trim().startsWith("#") && line.includes("=")).map(line => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
 values.set("LIFEOS_AUTH_REQUIRED", "true"); values.set("LIFEOS_AUTH_EMAIL", email); values.set("LIFEOS_AUTH_PASSWORD_HASH", `${salt.toString("hex")}:${hash.toString("hex")}`);
+if (String(values.get("LIFEOS_VAULT_SECRET") || "").length < 32) values.set("LIFEOS_VAULT_SECRET", randomBytes(32).toString("hex"));
 await writeFile(".env.local", [...values].map(([key, value]) => `${key}=${value}`).join("\n") + "\n", { mode: 0o600 });
-console.log("LifeOS authentication configured in the gitignored .env.local file.");
+console.log("LifeOS authentication and a persistent encrypted-vault secret are configured in the gitignored .env.local file.");

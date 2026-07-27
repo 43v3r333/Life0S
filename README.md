@@ -19,17 +19,22 @@ npm run lint
 npm test
 npm run build
 npm run docs:check
+npm audit
 ```
 
 ## Data and reliability
 
-- `data/lifeos.sqlite` is the authoritative transactional store.
-- On first upgraded startup, `data/db.json` is copied to a checksum-labelled rollback artifact, imported, and reconciled before SQLite becomes authoritative.
-- Uploaded statements and screenshots remain files under `data/statements`; their metadata, ownership, hash, and analysis state are indexed in SQLite.
+- `LIFEOS_DATA_DIR/lifeos.sqlite` is the authoritative transactional store. Production requires an explicit `LIFEOS_DATA_DIR`; development defaults to `data/`.
+- On first upgraded startup, `LIFEOS_DATA_DIR/db.json` is copied to a checksum-labelled rollback artifact, imported, and reconciled before SQLite becomes authoritative.
+- Uploaded statements and screenshots remain files below `LIFEOS_DATA_DIR`; their metadata, ownership, hash, and analysis state are indexed in SQLite.
 - Backup bundles include a consistent SQLite snapshot, uploaded files, the local vector index, a sanitized compatibility state, and a checksum manifest.
-- Provider credentials are encrypted separately and are never stored in the SQLite application state or ordinary AI prompts.
+- Provider credentials are encrypted separately with the persistent `LIFEOS_VAULT_SECRET` and are never stored in the SQLite application state or ordinary AI prompts.
+- Healthy startup is read-only for application records. Data repair, classification, reconciliation, memory synchronization, and account-balance changes require an explicit API action.
+- Apple Vision OCR is used only on macOS. Linux safely skips Apple-only binaries and uses configured NVIDIA vision; HEIC files remain saved with actionable conversion guidance.
 
 Storage health is available at `GET /api/system/storage-status` and can be reconciled with `POST /api/system/storage-verify`.
+
+Production startup fails closed unless `APP_URL`, `LIFEOS_DATA_DIR`, `LIFEOS_AUTH_REQUIRED=true`, a valid authentication email/password hash, and a stable `LIFEOS_VAULT_SECRET` of at least 32 characters are configured. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## AI behavior
 

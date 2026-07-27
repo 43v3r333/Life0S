@@ -1,3 +1,4 @@
+import "./server/loadEnv.js";
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
@@ -5,7 +6,6 @@ import { fileURLToPath } from "url";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -25,14 +25,14 @@ import { createSystemRouter } from "./server/routes/systemRoutes.js";
 import { createSearchRouter } from "./server/routes/searchRoutes.js";
 import { apiErrorHandler, requireJsonObject } from "./server/http.js";
 import { buildAiDiagnostics, excludeMemoriesSupersededByCurrentRecords } from "./server/aiDiagnostics.js";
-import { buildSystemIntegrity, cleanupOrphanedTemporaryUploads } from "./server/integrityService.js";
+import { buildSystemIntegrity } from "./server/integrityService.js";
 import { verifyBackup } from "./server/backupVerification.js";
 import { parseProviderJson } from "./server/validation.js";
 import { createBusinessRouter } from "./server/routes/businessRoutes.js";
 import { buildCodebaseGuide } from "./server/codebaseService.js";
 import { buildAiContextRegistry, workspaceAiContext } from "./server/aiContextRegistry.js";
 import { createNextOccurrence, dependencyState, hasDependencyCycle } from "./server/taskAutomation.js";
-import { balanceHistoryFor, recordBalanceChange, seedMissingBalanceHistory } from "./server/balanceHistory.js";
+import { balanceHistoryFor, recordBalanceChange } from "./server/balanceHistory.js";
 import { buildEveryMomentPlan, defaultDayPlanPreferences } from "./server/dayPlanner.js";
 import { registerGoogleWorkspaceRoutes } from "./server/googleWorkspace.js";
 import { registerGoogleAutomationRoutes, searchDriveIndex } from "./server/googleAutomation.js";
@@ -40,23 +40,34 @@ import { DEFAULT_AUTOMATION_RULES, registerDailyAutomationRoutes, shiftWindows }
 import { registerGoogleBusinessRoutes } from "./server/googleBusiness.js";
 import { registerCareerRoutes } from "./server/career.js";
 import { registerCodeLearningRoutes } from "./server/codeLearning.js";
+import { lifeOsDataDirectory, lifeOsDataPath } from "./server/dataPaths.js";
+import { localOcrCapability, unsupportedImageReason } from "./server/ocrSupport.js";
 
-dotenv.config({ path: ".env.local" });
-dotenv.config();
 const runtimeConfiguration = loadRuntimeConfiguration();
 validateRuntimeConfiguration(runtimeConfiguration);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const secretsDirectory = path.resolve(process.env.LIFEOS_DATA_DIR || path.join(process.cwd(), "data"));
+const secretsDirectory = lifeOsDataDirectory();
 const secretsFile = path.join(secretsDirectory, ".secrets.json");
 const execFileAsync = promisify(execFile);
+
+function vaultKeyMaterial(): string {
+  const secret = String(process.env.LIFEOS_VAULT_SECRET || "");
+  if (secret.length < 32) {
+    throw Object.assign(new Error("LIFEOS_VAULT_SECRET must contain at least 32 characters before encrypted credentials can be read or saved."), {
+      code: "VAULT_SECRET_REQUIRED",
+      recovery: "Set a stable, randomly generated LIFEOS_VAULT_SECRET in the protected production environment and restart LifeOS.",
+    });
+  }
+  return secret;
+}
 
 async function loadLocalSecrets() {
   try {
     const saved = JSON.parse(await fs.readFile(secretsFile, "utf8"));
     if (saved?.version === 1 && saved?.ciphertext && saved?.iv && saved?.salt && saved?.tag) {
-      const keyMaterial = process.env.LIFEOS_VAULT_SECRET || `${process.env.USER || "lifeos"}|${process.cwd()}`;
+      const keyMaterial = vaultKeyMaterial();
       const key = scryptSync(keyMaterial, Buffer.from(saved.salt, "base64"), 32);
       const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(saved.iv, "base64"));
       decipher.setAuthTag(Buffer.from(saved.tag, "base64"));
@@ -73,7 +84,7 @@ async function persistLocalSecrets(vault: Record<string, any>) {
   const allowed = ["nvidiaKey", "openaiKey", "geminiKey", "anthropicKey", "githubToken", "googleClientId", "googleClientSecret", "googleRefreshToken", "googleGrantedScopes"];
   const saved = Object.fromEntries(allowed.filter((key) => typeof vault[key] === "string" && vault[key].trim()).map((key) => [key, vault[key].trim()]));
   const salt = randomBytes(16), iv = randomBytes(12);
-  const keyMaterial = process.env.LIFEOS_VAULT_SECRET || `${process.env.USER || "lifeos"}|${process.cwd()}`;
+  const keyMaterial = vaultKeyMaterial();
   const key = scryptSync(keyMaterial, salt, 32);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(saved), "utf8"), cipher.final()]);
@@ -87,10 +98,8 @@ async function persistLocalSecrets(vault: Record<string, any>) {
 
 // Dynamic In-Memory Database for Phase 4 Full-Stack Knowledge Base
 let state = {
-  currentUser: personalProfile.name,
-  sessions: [
-    { id: "session_local", device: "Local LifeOS device", ipAddress: "127.0.0.1", location: personalProfile.location, lastActive: "Just now", isCurrent: true }
-  ],
+  currentUser: "",
+  sessions: [] as any[],
   vault: createSafeVaultState(runtimeConfiguration),
   scores: {
     overall: 0, faith: 0, marriage: 0, health: 0, career: 0,
@@ -99,83 +108,10 @@ let state = {
   salahCount: 0,
   workoutCount: 0,
   expenseCount: 0,
-  goals: personalGoals.map((goal) => ({
-    ...goal,
-    targetDate: "",
-    progress: 0,
-    smartDefinition: "",
-    okrObjective: goal.title,
-    kpis: [],
-    northStar: personalProfile.vision,
-    risk: "Unassessed",
-    dependencies: [],
-    evidence: "",
-    status: "Active",
-    owner: personalProfile.name,
-    aiForecast: "",
-    aiRiskAnalysis: "",
-    aiRecommendations: "",
-    linkedDocs: []
-  })) as any[],
-  projects: [{
-    id: "project_43v3r",
-    title: "43v3r Technology",
-    status: "In Progress",
-    priority: "High",
-    timeline: "",
-    budget: 0,
-    resources: [personalProfile.name],
-    stakeholders: [personalProfile.name],
-    dependencies: [],
-    objectives: "Build an AI software company with a focused, validated product offering.",
-    deliverables: "",
-    risks: "",
-    issues: "",
-    aiSummary: "",
-    progressPrediction: ""
-  }] as any[],
-  tasks: [{
-    id: "task_business_problem",
-    title: "Choose the first customer problem for 43v3r Technology",
-    projectId: "project_43v3r",
-    goalId: "goal_43v3r",
-    priority: "High",
-    deepWork: true,
-    energyLevel: "High",
-    estimatedTime: 60,
-    actualTime: 0,
-    recurrence: "None",
-    dependencies: [],
-    focusScore: 0,
-    aiPriority: "",
-    status: "pending",
-    contextTags: ["business", "customer-discovery"],
-    timeBlock: ""
-  }, {
-    id: "task_finance_baseline",
-    title: "Create a complete debt and monthly-expense baseline",
-    projectId: "",
-    goalId: "goal_debt_free",
-    priority: "High",
-    deepWork: false,
-    energyLevel: "Medium",
-    estimatedTime: 45,
-    actualTime: 0,
-    recurrence: "None",
-    dependencies: [],
-    focusScore: 0,
-    aiPriority: "",
-    status: "pending",
-    contextTags: ["finance", "debt"],
-    timeBlock: ""
-  }] as any[],
-  habits: personalRoutines.map((routine) => ({
-    ...routine,
-    streak: 0,
-    target: routine.frequency,
-    identity: "",
-    routine: "Flexible Routine"
-  })) as any[],
+  goals: [] as any[],
+  projects: [] as any[],
+  tasks: [] as any[],
+  habits: [] as any[],
   focusSessions: [] as any[],
   knowledgeObjects: [] as any[],
   graphNodes: [] as any[],
@@ -230,151 +166,18 @@ async function startServer() {
   // saveDb() serialize stale data after an application restart.
   state = loadedState as typeof state;
   state.vault = { ...createSafeVaultState(runtimeConfiguration), ...(state.vault || {}), ...(await loadLocalSecrets()) };
-  if (Object.values(state.vault).some((value) => typeof value === "string" && value.trim())) await persistLocalSecrets(state.vault);
-  state.aiActionProposals = state.aiActionProposals || [];
-  state.aiMemories = state.aiMemories || [];
-  state.aiMemoryCandidates = state.aiMemoryCandidates || [];
-  state.aiConversations = state.aiConversations || [];
-  state.aiDecisions = state.aiDecisions || [];
-  state.aiFinanceBriefings = state.aiFinanceBriefings || [];
-  state.aiRequestDiagnostics = state.aiRequestDiagnostics || [];
-  state.operationAudit = state.operationAudit || [];
-  state.taskRecurrenceInstances = state.taskRecurrenceInstances || [];
-  state.accountBalanceHistory = state.accountBalanceHistory || [];
-  state.bankStatementAnalyses = state.bankStatementAnalyses || [];
-  state.bankStatementDocuments = state.bankStatementDocuments || [];
-  state.balanceScreenshotDocuments = state.balanceScreenshotDocuments || [];
-  state.balanceUpdateProposals = state.balanceUpdateProposals || [];
-  state.operationAudit = (state.operationAudit || []).slice(0, 500);
-  await cleanupOrphanedTemporaryUploads(state, secretsDirectory).catch(error => console.warn("[CLEANUP] Temporary upload cleanup failed:", error?.message || error));
-  state.merchantCategoryRules = state.merchantCategoryRules || [];
-  state.personalTransferRules = state.personalTransferRules || [];
-  state.autoValidationRules = state.autoValidationRules || [];
-  const memoryMigrationNeeded = state.aiMemories.some((item: any) => !item.memoryType || !item.verificationStatus || !item.lifecycleStatus);
-  state.aiMemories = state.aiMemories.map((item: any) => ({ memoryType: item.source === "user-confirmed" ? "confirmed-fact" : item.category === "finance-briefing" ? "temporary-recommendation" : item.category?.includes("statement") || item.category?.includes("spending") ? "derived-observation" : "historical-event", verificationStatus: item.source === "user-confirmed" ? "user-confirmed" : "system-derived", lifecycleStatus: "active", confidence: item.source === "user-confirmed" ? 1 : .8, validFrom: item.createdAt || new Date().toISOString(), expiresAt: item.category === "finance-briefing" ? new Date(new Date(item.createdAt || Date.now()).getTime() + 30 * 86400000).toISOString() : null, sourceType: item.source || "legacy-memory", entityType: item.statementDocumentId ? "statement-document" : item.analysisId ? "statement-analysis" : item.briefingId ? "finance-briefing" : null, entityId: item.statementDocumentId || item.analysisId || item.briefingId || null, supersededBy: null, ...item }));
-  let memoryConsolidationChanged = false;
-  for (const analysis of state.bankStatementAnalyses || []) {
-    const reviewMemory = state.aiMemories.find((item: any) => item.analysisId === analysis.id && item.source === "nvidia-statement-review");
-    if (!reviewMemory) continue;
-    for (const memory of state.aiMemories.filter((item: any) => (item.analysisId === analysis.id && item.id !== reviewMemory.id) || (item.statementDocumentId === analysis.statementDocumentId))) {
-      if (memory.lifecycleStatus !== "superseded" || memory.supersededBy !== reviewMemory.id) { memory.lifecycleStatus = "superseded"; memory.supersededBy = reviewMemory.id; memory.updatedAt = new Date().toISOString(); memoryConsolidationChanged = true; }
-    }
-  }
-  for (const memory of state.aiMemories) {
-    const pointId = `memory_${memory.id}`;
-    if (memory.lifecycleStatus !== "active") { await qdrantStore.deletePoint(pointId); continue; }
-    const vector = await qdrantStore.getEmbeddings(`${memory.category} ${memory.memoryType} ${memory.content}`);
-    await qdrantStore.upsertPoint(pointId, vector, { kind: "lifeos-memory", memoryId: memory.id, category: memory.category, memoryType: memory.memoryType, verificationStatus: memory.verificationStatus });
-  }
-  const balanceHistorySeeded=seedMissingBalanceHistory(state);
-  if (memoryMigrationNeeded || memoryConsolidationChanged || balanceHistorySeeded) await saveDb();
-
-  if ((state as any).personalizationVersion !== 2) {
-    state.scores = {
-      overall: 0, faith: 0, marriage: 0, health: 0, career: 0,
-      business: 0, finance: 0, learning: 0, discipline: 0, consistency: 0,
-    };
-    state.salahCount = 0;
-    state.workoutCount = 0;
-    state.expenseCount = 0;
-    state.goals = state.goals.filter((goal: any) => !["g1", "g2"].includes(goal.id));
-    state.projects = state.projects.filter((project: any) => project.id !== "p1");
-    state.tasks = state.tasks.filter((task: any) => !["t1", "t2", "t3"].includes(task.id));
-    state.habits = state.habits.filter((habit: any) => !["h1", "h2", "h3", "h4"].includes(habit.id));
-    state.focusSessions = [];
-    state.knowledgeObjects = [];
-    state.graphNodes = [];
-    state.graphEdges = [];
-    state.systemEvents = [];
-    state.sessions = [{
-      id: "session_local",
-      device: "Local LifeOS device",
-      ipAddress: "127.0.0.1",
-      location: personalProfile.location,
-      lastActive: "Just now",
-      isCurrent: true,
-    }];
-    (state as any).personalizationVersion = 2;
-  }
-
-  // Apply stable profile choices without deleting user-created records.
-  state.currentUser = personalProfile.name;
-  for (const goal of personalGoals) {
-    if (!state.goals.some((existing: any) => existing.id === goal.id)) {
-      state.goals.push({
-        ...goal,
-        targetDate: "",
-        progress: 0,
-        smartDefinition: "Define a measurable success outcome and target date.",
-        okrObjective: goal.title,
-        kpis: [],
-        northStar: personalProfile.vision,
-        risk: "Medium",
-        dependencies: [],
-        evidence: "",
-        status: "Active",
-        owner: personalProfile.name,
-      });
-    }
-  }
-  for (const routine of personalRoutines) {
-    if (!state.habits.some((existing: any) => existing.id === routine.id)) {
-      state.habits.push({
-        ...routine,
-        streak: 0,
-        target: routine.frequency,
-        identity: `I consistently make time for ${routine.name.toLowerCase()}.`,
-        routine: routine.category === "career" ? "Rotating Shift Routine" : "Flexible Routine",
-      });
-    }
-  }
-  if (!state.projects.some((project: any) => project.id === "project_43v3r")) {
-    state.projects.push({
-      id: "project_43v3r",
-      title: "43v3r Technology",
-      status: "In Progress",
-      priority: "High",
-      timeline: "Define milestones and target dates",
-      budget: 0,
-      resources: [personalProfile.name],
-      stakeholders: [personalProfile.name],
-      dependencies: ["Choose first customer problem", "Define minimum viable product"],
-      objectives: "Build an AI software company with a focused, validated product offering.",
-      deliverables: "Business model, customer discovery, MVP, and launch plan.",
-      risks: "Insufficient focus while balancing rotating shifts and studies.",
-      issues: "Success measures and deadlines still need to be defined.",
-      aiSummary: "Personal business-building project derived from the discovery workbook.",
-      progressPrediction: "Pending milestones and capacity plan.",
-    });
-  }
-  const starterTasks = [
-    {
-      id: "task_business_problem", title: "Choose the first customer problem for 43v3r Technology",
-      projectId: "project_43v3r", goalId: "goal_43v3r", priority: "High", deepWork: true,
-      energyLevel: "High", estimatedTime: 60, actualTime: 0, recurrence: "None", dependencies: [],
-      focusScore: 90, aiPriority: "High; schedule during a high-energy non-shift block",
-      status: "pending", contextTags: ["business", "customer-discovery"], timeBlock: "",
-    },
-    {
-      id: "task_finance_baseline", title: "Create a complete debt and monthly-expense baseline",
-      projectId: "", goalId: "goal_debt_free", priority: "High", deepWork: false,
-      energyLevel: "Medium", estimatedTime: 45, actualTime: 0, recurrence: "None", dependencies: [],
-      focusScore: 85, aiPriority: "High; required before financial recommendations",
-      status: "pending", contextTags: ["finance", "debt"], timeBlock: "",
-    },
-    {
-      id: "task_understand_lifeos_codebase", title: "Understand the LifeOS codebase and turn one feature into a 43v3r business case",
-      projectId: "project_43v3r", goalId: "goal_43v3r", priority: "High", deepWork: true,
-      energyLevel: "High", estimatedTime: 120, actualTime: 0, recurrence: "None", dependencies: [],
-      focusScore: 92, aiPriority: "High; complete the Codebase learning path and define one validated customer problem",
-      status: "pending", contextTags: ["business", "codebase", "product-development", "customer-discovery"], timeBlock: "",
-      notes: "Use Work > Codebase & Business. Trace one feature end-to-end, document the customer problem it solves, identify the target customer, and prepare an anonymized product demonstration.",
-    },
-  ];
-  for (const task of starterTasks) {
-    if (!state.tasks.some((existing: any) => existing.id === task.id)) state.tasks.push(task);
-  }
-  await saveDb();
+  // Startup is deliberately read-only with respect to authoritative records.
+  // Schema/data migrations happen inside initDb with verification and rollback
+  // protection; application startup never seeds, rewrites, cleans up, or
+  // recovers user records automatically.
+  const collectionKeys = [
+    "aiActionProposals", "aiMemories", "aiMemoryCandidates", "aiConversations",
+    "aiDecisions", "aiFinanceBriefings", "aiRequestDiagnostics", "operationAudit",
+    "taskRecurrenceInstances", "accountBalanceHistory", "bankStatementAnalyses",
+    "bankStatementDocuments", "balanceScreenshotDocuments", "balanceUpdateProposals",
+    "merchantCategoryRules", "personalTransferRules", "autoValidationRules",
+  ] as const;
+  for (const key of collectionKeys) if (!Array.isArray((state as any)[key])) (state as any)[key] = [];
 
   // Initialize FinanceOS Module registrations and route controllers
   initFinanceOSModule();
@@ -1674,7 +1477,7 @@ async function startServer() {
   });
 
   const createLocalBackup = async (reason = "manual") => {
-    const backupDir = path.join(process.cwd(), "data", "backups");
+    const backupDir = lifeOsDataPath("backups");
     await fs.mkdir(backupDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `lifeos-backup-${stamp}`;
@@ -1684,7 +1487,7 @@ async function startServer() {
     await fs.writeFile(stateFile, JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, state: { ...state, vault: {} } }, null, 2), { encoding: "utf8", mode: 0o600 });
     createSqliteSnapshot(path.join(bundle, "lifeos.sqlite"));
     for (const relative of ["qdrant.json", "statements"]) {
-      const source = path.join(process.cwd(), "data", relative), destination = path.join(bundle, relative);
+      const source = lifeOsDataPath(relative), destination = path.join(bundle, relative);
       try { await fs.cp(source, destination, { recursive: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; }
     }
     const files: Array<{ path: string; size: number; sha256: string }> = [];
@@ -1808,13 +1611,7 @@ async function startServer() {
     auditOperation("monthly_commitments_confirmed", { month, paidAt }); await saveDb(); res.status(201).json({ record, dailyState: buildDailyState() });
   });
 
-  app.get("/api/personal/command-center", async (_req, res) => {
-    const today = new Date().toISOString().slice(0, 10);
-    if ((state.onboarding as any)?.lastAutoBackupDate !== today) {
-      const filename = await createLocalBackup("automatic-daily");
-      state.onboarding = { ...(state.onboarding || {}), lastAutoBackupDate: today };
-      auditOperation("automatic_backup_created", { filename }); await saveDb();
-    }
+  app.get("/api/personal/command-center", (_req, res) => {
     const daily = buildDailyState();
     res.json({ ...daily, actions: (state.aiActionProposals || []).filter((item: any) => item.status === "pending"), memories: state.aiMemories || [], audit: (state.operationAudit || []).slice(0, 20) });
   });
@@ -1982,10 +1779,7 @@ async function startServer() {
   app.patch("/api/ai/memories/:id", async (req, res) => { const memory = (state.aiMemories || []).find((item: any) => item.id === req.params.id); if (!memory) return res.status(404).json({ error: "Memory not found." }); const content = String(req.body.content || "").trim(); if (!content) return res.status(400).json({ error: "Memory content is required." }); memory.content = content.slice(0, 1000); memory.category = String(req.body.category || memory.category); for (const key of ["memoryType", "verificationStatus", "lifecycleStatus", "validFrom", "expiresAt", "entityType", "entityId", "supersededBy"]) if (req.body[key] !== undefined) memory[key] = req.body[key]; if (req.body.confidence !== undefined) memory.confidence = Math.max(0, Math.min(1, Number(req.body.confidence))); memory.updatedAt = new Date().toISOString(); if (memory.lifecycleStatus === "active") { const vector = await qdrantStore.getEmbeddings(`${memory.category} ${memory.memoryType} ${memory.content}`); await qdrantStore.upsertPoint(`memory_${memory.id}`, vector, { kind: "lifeos-memory", memoryId: memory.id, category: memory.category, memoryType: memory.memoryType, verificationStatus: memory.verificationStatus }); } else await qdrantStore.deletePoint(`memory_${memory.id}`); auditOperation("ai_memory_updated", { memoryId: memory.id }); await saveDb(); res.json(memory); });
   app.delete("/api/ai/memories/:id", async (req, res) => { const before = (state.aiMemories || []).length; state.aiMemories = (state.aiMemories || []).filter((item: any) => item.id !== req.params.id); if (before === state.aiMemories.length) return res.status(404).json({ error: "Memory not found." }); await qdrantStore.deletePoint(`memory_${req.params.id}`); auditOperation("ai_memory_deleted", { memoryId: req.params.id }); await saveDb(); res.status(204).end(); });
 
-  app.get("/api/personal/overview", async (_req, res) => {
-    const ledgerSync = ensureFinanceLedgerConsistency();
-    if (ledgerSync.changed) { for (const documentId of ledgerSync.affectedDocuments) await refreshStatementDerivedRecords(documentId); await refreshFinanceSnapshot(); auditOperation("finance_read_consistency_repaired", ledgerSync); }
-    if (rollDueDates() || ledgerSync.changed) await saveDb();
+  app.get("/api/personal/overview", (_req, res) => {
     const income = (state.financeEntries || []).filter((entry: any) => entry.type === "income").reduce((sum: number, entry: any) => sum + entry.amount, 0);
     const grossExpenses = (state.financeEntries || []).filter((entry: any) => entry.type === "expense").reduce((sum: number, entry: any) => sum + entry.amount, 0);
     const refunds = (state.financeEntries || []).filter((entry: any) => entry.type === "refund").reduce((sum: number, entry: any) => sum + entry.amount, 0);
@@ -2088,7 +1882,7 @@ async function startServer() {
     if (!match) return res.status(400).json({ error: "Choose a valid PNG, JPG, or HEIC balance screenshot." });
     const imageBuffer = Buffer.from(match[2], "base64"); if (!imageBuffer.length || imageBuffer.length > 6 * 1024 * 1024) return res.status(400).json({ error: "Balance screenshots must be 6 MB or smaller." });
     const now = new Date().toISOString(), documentId = randomUUID(), extension = match[1].includes("png") ? "png" : match[1].includes("heic") || match[1].includes("heif") ? "heic" : "jpg";
-    const directory = path.join(process.cwd(), "data", "balance-screenshots"); await fs.mkdir(directory, { recursive: true }); const storedFilename = `${documentId}.${extension}`; await fs.writeFile(path.join(directory, storedFilename), imageBuffer, { mode: 0o600 });
+    const directory = lifeOsDataPath("balance-screenshots"); await fs.mkdir(directory, { recursive: true }); const storedFilename = `${documentId}.${extension}`; await fs.writeFile(path.join(directory, storedFilename), imageBuffer, { mode: 0o600 });
     const document: any = { id: documentId, originalFileName: String(req.body.fileName || `balances.${extension}`).replace(/[^\w .()-]/g, "").slice(0,180), storedFilename, sha256: createHash("sha256").update(imageBuffer).digest("hex"), status: "analyzing", createdAt: now, updatedAt: now };
     state.balanceScreenshotDocuments.push(document); await saveDb();
     const nvidiaKey = state.vault.nvidiaKey || process.env.NVIDIA_API_KEY; if (!nvidiaKey) { document.status = "saved-analysis-pending"; await saveDb(); return res.status(503).json({ error: "The balance screenshot is saved, but NVIDIA must be connected to analyze it." }); }
@@ -2118,7 +1912,7 @@ async function startServer() {
     const document = (state.balanceScreenshotDocuments || []).find((item: any) => item.id === req.params.id); if (!document) return res.status(404).json({ error: "Balance screenshot not found." });
     const proposals = (state.balanceUpdateProposals || []).filter((item: any) => item.documentId === document.id), confirmed = proposals.filter((item: any) => item.status === "confirmed").length;
     state.balanceScreenshotDocuments = (state.balanceScreenshotDocuments || []).filter((item: any) => item.id !== document.id); state.balanceUpdateProposals = (state.balanceUpdateProposals || []).filter((item: any) => item.documentId !== document.id);
-    const storedPath = path.join(process.cwd(), "data", "balance-screenshots", String(document.storedFilename || "")); if (document.storedFilename) await fs.unlink(storedPath).catch(() => {});
+    const storedPath = lifeOsDataPath("balance-screenshots", String(document.storedFilename || "")); if (document.storedFilename) await fs.unlink(storedPath).catch(() => {});
     auditOperation("balance_screenshot_deleted", { documentId: document.id, originalFileName: document.originalFileName, proposalsRemoved: proposals.length, confirmedBalanceRecordsPreserved: confirmed }); await saveDb();
     res.json({ deleted: true, documentId: document.id, proposalsRemoved: proposals.length, confirmedBalanceRecordsPreserved: confirmed, message: confirmed ? "Screenshot removed. Previously confirmed account balances were preserved." : "Screenshot and pending balance proposals removed." });
   });
@@ -2232,7 +2026,7 @@ async function startServer() {
       const existingDocument = (state.bankStatementDocuments || []).find((item: any) => item.sha256 === sha256 && item.accountId === account.id);
       const documentId = existingDocument?.id || randomUUID(), extension = match[1].includes("png") ? "png" : match[1].includes("heic") || match[1].includes("heif") ? "heic" : "jpg";
       statementDocumentId = documentId;
-      const statementDir = path.join(process.cwd(), "data", "statements"); await fs.mkdir(statementDir, { recursive: true });
+      const statementDir = lifeOsDataPath("statements"); await fs.mkdir(statementDir, { recursive: true });
       const storedFilename = existingDocument?.storedFilename || `${documentId}.${extension}`, storedPath = path.join(statementDir, storedFilename);
       if (!existingDocument) await fs.writeFile(storedPath, imageBuffer, { mode: 0o600 });
       const document: any = existingDocument || { id: documentId, accountId: account.id, accountKind, accountName: account.name, originalFileName: sourceFileName, storedFilename, sha256, pages: 1, sourceFormat: "screenshot", createdAt: new Date().toISOString() };
@@ -2241,9 +2035,21 @@ async function startServer() {
       if (!(state.aiMemories || []).some((item: any) => item.statementDocumentId === documentId)) state.aiMemories.push({ id: randomUUID(), content: `Saved a transaction screenshot for ${account.name} on ${document.createdAt.slice(0, 10)}. Extracted rows remain reviewable before they affect the finance ledger.`, category: "bank-statement", source: "saved-transaction-screenshot", sourceType: "transaction-screenshot", memoryType: "historical-event", verificationStatus: "system-derived", lifecycleStatus: "active", confidence: .9, validFrom: document.createdAt, expiresAt: null, entityType: "statement-document", entityId: documentId, statementDocumentId: documentId, createdAt: document.createdAt, updatedAt: document.createdAt });
       auditOperation(existingDocument ? "transaction_screenshot_reanalysis_started" : "transaction_screenshot_saved", { documentId, accountKind }); await saveDb();
       let ocrText = "";
-      let structured: any = null, ocrProvider = "Apple Vision on-device";
-      try { const binDir = path.join(process.cwd(), "data", "bin"), ocrBinary = path.join(binDir, "lifeos-ocr"); await fs.mkdir(binDir, { recursive: true }); await execFileAsync("/usr/bin/clang", ["-fobjc-arc", "-fblocks", "-framework", "Foundation", "-framework", "Vision", "-framework", "ImageIO", "-framework", "CoreGraphics", path.join(process.cwd(), "scripts", "ocr-image.m"), "-o", ocrBinary], { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 }); const result = await execFileAsync(ocrBinary, [storedPath], { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 }); ocrText = String(result.stdout || "").trim(); }
-      catch (error: any) { document.localOcrError = String(error.stderr || error.message || error).trim().slice(0, 300); }
+      const localOcr = localOcrCapability();
+      let structured: any = null, ocrProvider = localOcr.provider;
+      if (localOcr.supported) {
+        try {
+          const binDir = lifeOsDataPath("bin"), ocrBinary = path.join(binDir, "lifeos-ocr");
+          await fs.mkdir(binDir, { recursive: true });
+          await execFileAsync("/usr/bin/clang", ["-fobjc-arc", "-fblocks", "-framework", "Foundation", "-framework", "Vision", "-framework", "ImageIO", "-framework", "CoreGraphics", path.join(process.cwd(), "scripts", "ocr-image.m"), "-o", ocrBinary], { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 });
+          const result = await execFileAsync(ocrBinary, [storedPath], { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 });
+          ocrText = String(result.stdout || "").trim();
+        } catch (error: any) {
+          document.localOcrError = String(error.stderr || error.message || error).trim().slice(0, 300);
+        }
+      } else {
+        document.localOcrError = localOcr.reason;
+      }
       document.extractedCharacters = ocrText.length;
       const nvidiaKey = state.vault.nvidiaKey || process.env.NVIDIA_API_KEY;
       if (!nvidiaKey) { document.status = "saved-analysis-pending"; await saveDb(); return res.status(503).json({ error: "The screenshot and OCR text are saved, but NVIDIA must be connected to structure the transaction rows." }); }
@@ -2252,7 +2058,19 @@ async function startServer() {
       if (ocrText.length >= 12) extractionResponse = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${nvidiaKey}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(45_000), body: JSON.stringify({ model: process.env.NVIDIA_MODEL || "nvidia/nemotron-3-super-120b-a12b", messages: [{ role: "system", content: extractionInstruction }, { role: "user", content: ocrText.slice(0, 12000) }], temperature: 0, max_tokens: 4000, stream: false }) });
       else {
         let visionBuffer = imageBuffer, visionMime = match[1].includes("png") ? "image/png" : "image/jpeg";
-        if (visionBuffer.length > 175_000 || match[1].includes("heic") || match[1].includes("heif")) { const visionPath = path.join(statementDir, `${documentId}-vision.jpg`); await execFileAsync("/usr/bin/sips", ["--resampleHeightWidthMax", "1600", "-s", "format", "jpeg", "-s", "formatOptions", "65", storedPath, "--out", visionPath], { timeout: 60_000, maxBuffer: 1024 * 1024 }); visionBuffer = await fs.readFile(visionPath); await fs.unlink(visionPath).catch(() => {}); visionMime = "image/jpeg"; }
+        const appleConversionRequired = visionBuffer.length > 175_000 || match[1].includes("heic") || match[1].includes("heif");
+        if (appleConversionRequired && process.platform === "darwin") {
+          const visionPath = path.join(statementDir, `${documentId}-vision.jpg`);
+          await execFileAsync("/usr/bin/sips", ["--resampleHeightWidthMax", "1600", "-s", "format", "jpeg", "-s", "formatOptions", "65", storedPath, "--out", visionPath], { timeout: 60_000, maxBuffer: 1024 * 1024 });
+          visionBuffer = await fs.readFile(visionPath);
+          await fs.unlink(visionPath).catch(() => {});
+          visionMime = "image/jpeg";
+        } else if (unsupportedImageReason(match[1])) {
+          document.status = "saved-analysis-pending";
+          document.error = unsupportedImageReason(match[1]);
+          await saveDb();
+          return res.status(422).json({ error: document.error });
+        }
         extractionResponse = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${nvidiaKey}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(60_000), body: JSON.stringify({ model: process.env.NVIDIA_VISION_MODEL || "meta/llama-3.2-11b-vision-instruct", messages: [{ role: "user", content: [{ type: "text", text: extractionInstruction }, { type: "image_url", image_url: { url: `data:${visionMime};base64,${visionBuffer.toString("base64")}` } }] }], temperature: 0, max_tokens: 4000, stream: false }) }); ocrProvider = "NVIDIA Llama Vision fallback";
       }
       const extractionRaw: any = await extractionResponse.json();
@@ -2324,7 +2142,7 @@ async function startServer() {
       const existingDocument = (state.bankStatementDocuments || []).find((item: any) => item.sha256 === sha256 && item.accountId === account.id);
       const documentId = existingDocument?.id || randomUUID();
       statementDocumentId = documentId;
-      const statementDir = path.join(process.cwd(), "data", "statements");
+      const statementDir = lifeOsDataPath("statements");
       await fs.mkdir(statementDir, { recursive: true });
       const storedFilename = existingDocument?.storedFilename || `${documentId}.pdf`;
       if (!existingDocument) await fs.writeFile(path.join(statementDir, storedFilename), pdfBuffer, { mode: 0o600 });
@@ -2966,7 +2784,7 @@ async function startServer() {
   });
 
   app.get("/api/backups", async (_req, res) => {
-    const backupDir = path.join(process.cwd(), "data", "backups");
+    const backupDir = lifeOsDataPath("backups");
     await fs.mkdir(backupDir, { recursive: true });
     const files = await fs.readdir(backupDir);
     const backups = await Promise.all(files.filter((name) => /^lifeos-backup-[\w.-]+(?:\.json)?$/.test(name)).map(async (filename) => { const location = path.join(backupDir, filename), info = await fs.stat(location); let size = info.size; if (info.isDirectory()) { try { const manifest = JSON.parse(await fs.readFile(path.join(location, "manifest.json"), "utf8")); size = (manifest.files || []).reduce((sum: number, item: any) => sum + Number(item.size || 0), 0); } catch {} } return { filename, size, createdAt: info.mtime.toISOString(), format: info.isDirectory() ? "sqlite-bundle" : "legacy-json" }; }));
@@ -2982,14 +2800,14 @@ async function startServer() {
   app.post("/api/backups/:filename/verify", async (req, res, next) => {
     const filename = path.basename(req.params.filename);
     if (!/^lifeos-backup-[\w.-]+(?:\.json)?$/.test(filename)) return res.status(400).json({ error: { code: "INVALID_BACKUP_NAME", message: "Invalid backup filename.", fieldErrors: [] } });
-    try { const result = await verifyBackup(path.join(process.cwd(), "data", "backups", filename)); res.json({ ...result, state: undefined, filename, verifiedAt: new Date().toISOString() }); }
+    try { const result = await verifyBackup(lifeOsDataPath("backups", filename)); res.json({ ...result, state: undefined, filename, verifiedAt: new Date().toISOString() }); }
     catch (error) { next(error); }
   });
 
   app.post("/api/backups/:filename/restore", async (req, res, next) => {
     const filename = path.basename(req.params.filename);
     if (!/^lifeos-backup-[\w.-]+(?:\.json)?$/.test(filename)) return res.status(400).json({ error: "Invalid backup filename." });
-    const backupPath = path.join(process.cwd(), "data", "backups", filename);
+    const backupPath = lifeOsDataPath("backups", filename);
     let safetyFilename = "";
     const previousState = structuredClone({ ...state, vault: {} });
     const runtimeVault = state.vault;
@@ -3017,7 +2835,7 @@ async function startServer() {
       auditOperation("backup_restored", { filename });
       await saveDb();
       if (info.isDirectory()) {
-        for (const relative of ["qdrant.json", "statements"]) { try { await fs.cp(path.join(backupPath, relative), path.join(process.cwd(), "data", relative), { recursive: true, force: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; } }
+        for (const relative of ["qdrant.json", "statements"]) { try { await fs.cp(path.join(backupPath, relative), lifeOsDataPath(relative), { recursive: true, force: true }); } catch (error: any) { if (error?.code !== "ENOENT") throw error; } }
       }
       const verification = verifyStorage();
       if (!verification.ok) throw Object.assign(new Error("Restored state did not reconcile."), { status: 409, details: verification.errors });
@@ -5254,100 +5072,6 @@ Include:
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
-  }
-
-  // Re-apply confirmed rules at startup as a small data migration. This also
-  // repairs older screenshot imports whose OCR text omitted a bank prefix.
-  let savedScreenshotRecovered = false;
-  const savedBalanceOverview = (state.balanceScreenshotDocuments || []).find((item: any) => item.sha256 === "def2440648d08e7d51546fa7acada4d1685f4a55d145a369dae8bf204fe9c6dc");
-  if (savedBalanceOverview && !(state.balanceUpdateProposals || []).some((item: any) => item.documentId === savedBalanceOverview.id)) {
-    const creditCard = (state.debts || []).find((item: any) => item.liabilityType === "Credit card" && item.status !== "Paid"), premier = (state.bankAccounts || []).find((item: any) => /premier/i.test(item.name)), easy = (state.bankAccounts || []).find((item: any) => /easy/i.test(item.name)), now = new Date().toISOString();
-    const recovered = [
-      { detectedName: "Day to day", accountKind: "debit", balance: 6414, ledgerBalance: 6414, creditLimit: null, availableCredit: null, accountId: premier?.id || "", accountName: premier?.name || "Choose account" },
-      { detectedName: "Easy Account (Avail R4 / Bal R1,059)", accountKind: "debit", balance: 4, ledgerBalance: 1059, creditLimit: null, availableCredit: null, accountId: "", accountName: "Unmatched Easy Account — will not be applied" },
-      { detectedName: "Easy Account (Avail R-284 / Bal R-284)", accountKind: "debit", balance: -284, ledgerBalance: -284, creditLimit: null, availableCredit: null, accountId: easy?.id || "", accountName: easy?.name || "Choose account" },
-      { detectedName: "FNB Private Clients Credit Card", accountKind: "credit", balance: 7305, ledgerBalance: -7305, creditLimit: 14000, availableCredit: 6694, accountId: creditCard?.id || "", accountName: creditCard?.name || "Choose account" },
-    ].map((item: any) => ({ id: randomUUID(), documentId: savedBalanceOverview.id, ...item, asOfDate: localDate(personalProfile.timezone), confidence: 1, status: "pending", createdAt: now }));
-    state.balanceUpdateProposals.push(...recovered); savedBalanceOverview.proposalIds = recovered.map((item: any) => item.id); savedBalanceOverview.status = "awaiting-confirmation"; savedBalanceOverview.summary = "Recovered all four visible account cards. Duplicate Easy Account labels require user assignment before confirmation."; savedBalanceOverview.updatedAt = now; savedScreenshotRecovered = true; auditOperation("saved_balance_overview_recovered", { documentId: savedBalanceOverview.id, proposals: recovered.length });
-  }
-  const latestSignedBalanceOverview = (state.balanceScreenshotDocuments || []).find((item: any) => item.sha256 === "34826e73abd6509935a12c9136a0860464426be01da66b71d7e0a299a64f5b08");
-  if (latestSignedBalanceOverview) {
-    const premier = (state.bankAccounts || []).find((item: any) => /premier/i.test(item.name)), easy = (state.bankAccounts || []).find((item: any) => /easy/i.test(item.name)), proposals = (state.balanceUpdateProposals || []).filter((item: any) => item.documentId === latestSignedBalanceOverview.id && item.status === "pending");
-    for (const proposal of proposals) {
-      if (/easy account premier/i.test(proposal.detectedName)) { proposal.balance = -284; proposal.ledgerBalance = -284; proposal.accountId = premier?.id || ""; proposal.accountName = premier?.name || "Choose account"; proposal.signVerifiedFromImage = true; }
-      else if (/^easy account$/i.test(proposal.detectedName)) { proposal.balance = 304; proposal.ledgerBalance = 1359; proposal.accountId = easy?.id || ""; proposal.accountName = easy?.name || "Choose account"; proposal.signVerifiedFromImage = true; }
-      else if (/credit card/i.test(proposal.detectedName)) { proposal.balance = 6107; proposal.availableCredit = 6317; proposal.creditLimit = null; proposal.signVerifiedFromImage = true; }
-    }
-    if (proposals.length) { latestSignedBalanceOverview.summary = "Three account cards verified from the saved image; Premier is negative R284. The visible credit limit was not shown, so the saved R14,000 limit will be preserved."; latestSignedBalanceOverview.updatedAt = new Date().toISOString(); savedScreenshotRecovered = true; auditOperation("balance_signs_verified_from_saved_image", { documentId: latestSignedBalanceOverview.id, proposals: proposals.length }); }
-  }
-  for (const transaction of state.bankTransactions || []) if (transaction.classificationSource === "vision-narrative-recovery") transaction.description = String(transaction.description || "").replace(/^[*•\-\s]+/, "").trim();
-  for (const document of (state.bankStatementDocuments || []).filter((item: any) => item.sourceFormat === "screenshot" && item.status === "saved-analysis-pending" && item.visionResponsePreview)) {
-    const recoveredRows: any[] = [], monthNumbers: Record<string,string> = { january:"01",february:"02",march:"03",april:"04",may:"05",june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12" };
-    const pattern = /^[*•-]?\s*(?:\*\*)?([^:\n]+?)(?:\*\*)?\s*:\s*R\s*(-?[\d,]+(?:\.\d{1,2})?)\s*\((?:on\s+)?([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\)\s*$/gim;
-    for (const match of String(document.visionResponsePreview).matchAll(pattern)) {
-      const month = monthNumbers[match[3].toLowerCase()], amount = Number(match[2].replace(/,/g, ""));
-      if (!month || !Number.isFinite(amount) || !amount) continue;
-      recoveredRows.push({ date: `${match[5]}-${month}-${match[4].padStart(2,"0")}`, description: match[1].replace(/^[*•\-\s]+/, "").replace(/\*\*/g, "").trim(), amount });
-    }
-    const created: any[] = [];
-    for (const row of recoveredRows) {
-      const fingerprint = `${document.accountKind}:${document.accountId}|${row.date}|${row.description}|${row.amount.toFixed(2)}`.toLowerCase();
-      if ((state.bankTransactions || []).some((item: any) => item.fingerprint === fingerprint)) continue;
-      created.push({ id: randomUUID(), bankAccountId: document.accountKind === "debit" ? document.accountId : "", creditCardId: document.accountKind === "credit" ? document.accountId : "", statementDocumentId: document.id, accountKind: document.accountKind, accountName: document.accountName, sourceFormat: "screenshot", sourceFileName: document.originalFileName, positiveCreditMeansSpending: false, date: row.date, description: row.description, amount: Number(row.amount.toFixed(2)), analysisAmount: Number(row.amount.toFixed(2)), fingerprint, status: "unreconciled", suggestedCategory: "Other", aiConfidence: .75, analysisStatus: "pending-approval", classificationSource: "vision-narrative-recovery", createdAt: new Date().toISOString() });
-    }
-    if (created.length) {
-      state.bankTransactions.push(...created); document.status = "transactions-extracted-awaiting-review"; document.extractedTransactions = created.length; document.savedTransactions = created.length; document.ocrProvider = "NVIDIA Vision narrative recovery"; document.imageSummary = `Recovered ${created.length} transactions from the saved vision response for review.`; document.updatedAt = new Date().toISOString(); delete document.error;
-      auditOperation("saved_vision_response_transactions_recovered", { documentId: document.id, recovered: created.length }); savedScreenshotRecovered = true;
-    }
-  }
-  const creditScreenshot = (state.bankStatementDocuments || []).find((item: any) => item.sha256 === "643b8ddb4c098703affab7c89955993f2794c7192c176d022ff1982d381b340c");
-  if (creditScreenshot && !(state.bankTransactions || []).some((item: any) => item.statementDocumentId === creditScreenshot.id)) {
-    const verifiedRows = [
-      ["2026-07-18", "Electronic Trf Fee", -2], ["2026-07-18", "1SA Gg VODSNNC4GTMQ", -382],
-      ["2026-07-17", "Electronic Trf Fee", -2], ["2026-07-17", "1SA Gg VODSSFC7YNMQ", -300],
-      ["2026-07-17", "Electronic Trf Fee", -2], ["2026-07-17", "1SA Gg VODSR7CKJNMQ", -400],
-      ["2026-07-15", "Electronic Trf Fee", -2], ["2026-07-15", "1SA Gg VODSNDZHYBMQ", -300],
-      ["2026-07-14", "Electronic Trf Fee", -2],
-    ] as Array<[string,string,number]>;
-    const recovered = verifiedRows.map(([date, description, amount]) => ({ id: randomUUID(), bankAccountId: "", creditCardId: creditScreenshot.accountId, statementDocumentId: creditScreenshot.id, accountKind: "credit", accountName: creditScreenshot.accountName, sourceFormat: "screenshot-verified-recovery", sourceFileName: creditScreenshot.originalFileName, positiveCreditMeansSpending: false, date, description, amount, analysisAmount: amount, fingerprint: `credit:${creditScreenshot.accountId}|${date}|${description}|${amount.toFixed(2)}`.toLowerCase(), status: "unreconciled", suggestedCategory: description === "Electronic Trf Fee" ? "Card fee" : "Other", aiConfidence: description === "Electronic Trf Fee" ? 1 : .5, analysisStatus: "pending-approval", classificationSource: "verified-screenshot-recovery", createdAt: new Date().toISOString() }));
-    state.bankTransactions = [...(state.bankTransactions || []), ...recovered];
-    creditScreenshot.status = "transactions-extracted-awaiting-review"; creditScreenshot.extractedTransactions = recovered.length; creditScreenshot.savedTransactions = recovered.length; creditScreenshot.ocrProvider = "NVIDIA Vision + verified recovery"; creditScreenshot.imageSummary = "Recovered nine visible credit-account transactions for user review."; creditScreenshot.updatedAt = new Date().toISOString(); delete creditScreenshot.error;
-    auditOperation("saved_screenshot_transactions_recovered", { documentId: creditScreenshot.id, recovered: recovered.length }); savedScreenshotRecovered = true;
-  }
-  const startupScreenshotBalanceUpdates: any[] = [];
-  for (const transaction of (state.bankTransactions || []).filter((item: any) => item.screenshotReviewConfirmedAt && !item.accountBalanceAppliedAt)) {
-    if (!transaction.financeEntryId) {
-      const amount = Number(transaction.analysisAmount ?? transaction.amount), category = String(transaction.suggestedCategory || "Other"), type = category === "Internal transfer" ? "transfer" : amount >= 0 ? "income" : "expense";
-      const entry = { id: randomUUID(), date: transaction.date, type, amount: Math.abs(amount), category, description: transaction.description, recurring: false, bankTransactionId: transaction.id, classificationSource: "user-confirmed-screenshot", createdAt: transaction.screenshotReviewConfirmedAt };
-      state.financeEntries.push(entry); transaction.financeEntryId = entry.id; transaction.status = "reconciled"; transaction.reconciledAt = transaction.screenshotReviewConfirmedAt; transaction.analysisStatus = "validated";
-    }
-    const update = applyTransactionAccountBalance(transaction); if (update) startupScreenshotBalanceUpdates.push(update);
-  }
-  if (startupScreenshotBalanceUpdates.length) auditOperation("confirmed_screenshot_balances_repaired", { transactions: startupScreenshotBalanceUpdates.length, updates: startupScreenshotBalanceUpdates });
-  const startupValidatedEntries = applyAutoValidationRules();
-  let screenshotStatusRepaired = false;
-  for (const document of state.bankStatementDocuments || []) {
-    if (document.sourceFormat === "screenshot" && Number(document.savedTransactions || 0) > 0 && document.analysisId && document.status === "saved-analysis-pending") {
-      document.status = "analyzed"; delete document.error; document.updatedAt = new Date().toISOString(); screenshotStatusRepaired = true;
-    }
-  }
-  let derivedFinanceRecordsRefreshed = 0;
-  for (const document of (state.bankStatementDocuments || []).filter((item: any) => (state.bankTransactions || []).some((transaction: any) => transaction.statementDocumentId === item.id))) {
-    if (await refreshStatementDerivedRecords(document.id)) derivedFinanceRecordsRefreshed++;
-  }
-  await refreshFinanceSnapshot();
-  const startupSystemMemorySync = await syncSystemMemorySnapshots();
-  if (startupValidatedEntries.length || screenshotStatusRepaired || savedScreenshotRecovered || startupScreenshotBalanceUpdates.length || derivedFinanceRecordsRefreshed || startupSystemMemorySync.changed) {
-    auditOperation("startup_auto_validation_repair", {
-      reconciled: startupValidatedEntries.length,
-      screenshotStatusRepaired,
-      savedScreenshotRecovered,
-      screenshotBalancesUpdated: startupScreenshotBalanceUpdates.length,
-      derivedFinanceRecordsRefreshed,
-      memoryDomainsUpdated: startupSystemMemorySync.updatedDomains,
-      total: Number(startupValidatedEntries.reduce((sum: number, item: any) => sum + item.amount, 0).toFixed(2)),
-    });
-    await saveDb();
   }
 
   const HOST = process.env.HOST || "127.0.0.1";

@@ -7,6 +7,11 @@ export interface RuntimeConfiguration {
   readonly nvidiaModel?: string;
   readonly geminiApiKey?: string;
   readonly githubToken?: string;
+  readonly dataDirectory?: string;
+  readonly authRequired?: string;
+  readonly authEmail?: string;
+  readonly authPasswordHash?: string;
+  readonly vaultSecret?: string;
 }
 
 export interface SafeVaultState extends Record<string, string> {
@@ -34,7 +39,12 @@ export function loadRuntimeConfiguration(env: NodeJS.ProcessEnv = process.env): 
     nvidiaApiKey: env.NVIDIA_API_KEY,
     nvidiaModel: env.NVIDIA_MODEL,
     geminiApiKey: env.GEMINI_API_KEY,
-    githubToken: env.GITHUB_TOKEN
+    githubToken: env.GITHUB_TOKEN,
+    dataDirectory: env.LIFEOS_DATA_DIR,
+    authRequired: env.LIFEOS_AUTH_REQUIRED,
+    authEmail: env.LIFEOS_AUTH_EMAIL,
+    authPasswordHash: env.LIFEOS_AUTH_PASSWORD_HASH,
+    vaultSecret: env.LIFEOS_VAULT_SECRET,
   };
 }
 
@@ -46,6 +56,22 @@ export function validateRuntimeConfiguration(config: RuntimeConfiguration): void
   const missing: string[] = [];
   if (!config.appUrl || config.appUrl.trim() === "") {
     missing.push("APP_URL");
+  }
+  if (!config.dataDirectory || config.dataDirectory.trim() === "") {
+    missing.push("LIFEOS_DATA_DIR");
+  }
+  if (config.authRequired !== "true") {
+    missing.push("LIFEOS_AUTH_REQUIRED=true");
+  }
+  if (!config.authEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.authEmail.trim())) {
+    missing.push("LIFEOS_AUTH_EMAIL");
+  }
+  if (!config.authPasswordHash || !/^[0-9a-f]{32,}:[0-9a-f]{64,}$/i.test(config.authPasswordHash.trim())) {
+    missing.push("LIFEOS_AUTH_PASSWORD_HASH");
+  }
+  const vaultSecret = String(config.vaultSecret || "");
+  if (vaultSecret.length < 32 || /^(change|replace|example|password|secret)/i.test(vaultSecret)) {
+    missing.push("LIFEOS_VAULT_SECRET (at least 32 non-placeholder characters)");
   }
 
   if (missing.length > 0) {

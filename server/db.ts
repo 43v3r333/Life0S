@@ -2,10 +2,9 @@ import fs from "fs/promises";
 import path from "path";
 import { initializeSqlite, sqliteStorageStatus, verifySqliteState, writeSqliteState } from "./sqliteStore.js";
 import type { AiMemory, AiProposal, AuditEvent, BankAccount, BankTransaction, FinanceEntry, Liability, LiabilityPayment, UploadedDocument, WorkShift, WorkTask } from "./domainTypes.js";
+import { lifeOsDataDirectory } from "./dataPaths.js";
 
-const DATA_DIR = process.env.LIFEOS_DATA_DIR
-  ? path.resolve(process.cwd(), process.env.LIFEOS_DATA_DIR)
-  : path.join(process.cwd(), "data");
+const DATA_DIR = lifeOsDataDirectory();
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
 export interface Goal {

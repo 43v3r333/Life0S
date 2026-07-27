@@ -154,15 +154,14 @@ export async function initializeSqlite(dataDirectory: string, initialState: Json
   const existing = database.prepare("SELECT json FROM app_state WHERE id=1").get() as any;
   if (existing?.json) {
     const state = parse<JsonRecord>(existing.json, initialState);
-    // New normalized tables are intentionally created empty by schema(). On a
-    // version upgrade, backfill them transactionally from the authoritative
-    // app_state snapshot before reconciliation. The pre-migration SQLite copy
-    // above remains the untouched rollback artifact if this write fails.
-    // Re-materialize normalized tables on every verified load. This also
-    // repairs an interrupted migration where schema_migrations was recorded
-    // but newly introduced tables were not yet backfilled.
-    writeSqliteState(state);
-    const verification = verifySqliteState(state);
+    // A healthy startup is read-only for application records. Only an
+    // incomplete schema migration is repaired, and the pre-migration SQLite
+    // copy above remains the rollback artifact for that explicit repair.
+    let verification = verifySqliteState(state);
+    if (!verification.ok && previousVersion < SQLITE_SCHEMA_VERSION) {
+      writeSqliteState(state);
+      verification = verifySqliteState(state);
+    }
     if (!verification.ok) throw new Error(`SQLite verification failed: ${verification.errors.join("; ")}`);
     migrationSource = "sqlite";
     return state;
