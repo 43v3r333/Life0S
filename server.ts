@@ -1486,7 +1486,7 @@ async function startServer() {
     await fs.mkdir(bundle, { recursive: true, mode: 0o700 });
     const stateFile = path.join(bundle, "state.json");
     await fs.writeFile(stateFile, JSON.stringify({ version: 2, createdAt: new Date().toISOString(), reason, state: toPersistedState(state) }, null, 2), { encoding: "utf8", mode: 0o600 });
-    createSqliteSnapshot(path.join(bundle, "lifeos.sqlite"));
+    createSqliteSnapshot(path.join(bundle, "lifeos.sqlite"), { excludeSessions: true });
     for (const relative of ["statements", "balance-screenshots"]) {
       const source = lifeOsDataPath(relative), destination = path.join(bundle, relative);
       await fs.mkdir(destination, { recursive: true, mode: 0o700 });

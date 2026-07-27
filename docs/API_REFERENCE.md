@@ -185,7 +185,7 @@ The former `/api/v4/*` demonstration routes are retired and return `501 not_conf
 | PUT | `/api/personal/onboarding` | Save finance and work setup answers; blank values remain unknown. |
 | GET | `/api/workbook/snapshot` | Export structured LifeOS data for explicit workbook reconciliation. |
 | GET | `/api/backups` | List checksum-manifest SQLite backup bundles and legacy JSON backups. |
-| POST | `/api/backups` | Create a local bundle containing a consistent SQLite snapshot, statements, balance screenshots, vector index, sanitized state, and checksum manifest. |
+| POST | `/api/backups` | Create a local bundle containing a consistent session-free SQLite snapshot, statements, balance screenshots, vector index, sanitized state, and checksum manifest. |
 
 ### Personal intelligence and finance analysis
 

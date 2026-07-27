@@ -55,6 +55,9 @@ remain approval-only.
 Current backup bundles contain `lifeos.sqlite`, sanitized `state.json`,
 `qdrant.json`, `statements/`, and `balance-screenshots/`. The manifest declares
 these required artifacts and records a SHA-256 checksum for every file.
+Persistent authentication sessions are removed from the SQLite snapshot before
+checksums are calculated, and verification rejects any bundle that contains
+session rows.
 
 Restore copies the selected bundle into an isolated staging directory and
 verifies its manifest, paths, checksums, SQLite integrity, and application state

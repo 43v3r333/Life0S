@@ -14,6 +14,8 @@ function verifySqliteSnapshot(sqlitePath: string) {
     if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") throw new Error("SQLite integrity check failed.");
     const row = database.prepare("SELECT json FROM app_state WHERE id=1").get() as { json?: string } | undefined;
     if (!row?.json) throw new Error("SQLite snapshot has no authoritative app_state.");
+    const sessionCount = Number((database.prepare("SELECT COUNT(*) count FROM auth_sessions").get() as { count?: number } | undefined)?.count || 0);
+    if (sessionCount !== 0) throw new Error("SQLite backup contains persistent authentication sessions.");
     return validateStateEnvelope(JSON.parse(row.json));
   } finally {
     database.close();

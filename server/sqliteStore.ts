@@ -199,11 +199,21 @@ export function savePersistentSession(session: PersistentSession) { if (!databas
 export function deletePersistentSession(id: string) { if (database) database.prepare("DELETE FROM auth_sessions WHERE id=?").run(id); }
 export function sessionTokenHash(token: string) { return createHash("sha256").update(token).digest("hex"); }
 
-export function createSqliteSnapshot(destination: string) {
+export function createSqliteSnapshot(destination: string, options: { excludeSessions?: boolean } = {}) {
   if (!database) throw new Error("SQLite has not been initialized.");
   database.exec("PRAGMA wal_checkpoint(FULL)");
   const escaped = destination.replaceAll("'", "''");
   database.exec(`VACUUM INTO '${escaped}'`);
+  if (options.excludeSessions) {
+    const snapshot = new DatabaseSync(destination);
+    try {
+      snapshot.exec("PRAGMA secure_delete = ON");
+      snapshot.exec("BEGIN IMMEDIATE");
+      try { snapshot.exec("DELETE FROM auth_sessions"); snapshot.exec("COMMIT"); }
+      catch (error) { snapshot.exec("ROLLBACK"); throw error; }
+      snapshot.exec("VACUUM");
+    } finally { snapshot.close(); }
+  }
 }
 
 export function sqliteIntegrityCheck() {

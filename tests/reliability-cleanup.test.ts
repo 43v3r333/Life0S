@@ -15,7 +15,7 @@ const fixture = async () => {
   const stateBytes = Buffer.from(JSON.stringify({ version: 2, state }));
   await fs.writeFile(path.join(root, "state.json"), stateBytes);
   const sqlite = new DatabaseSync(path.join(root, "lifeos.sqlite"));
-  sqlite.exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL)");
+  sqlite.exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL); CREATE TABLE auth_sessions (id TEXT PRIMARY KEY)");
   sqlite.prepare("INSERT INTO app_state (id, json) VALUES (1, ?)").run(JSON.stringify(state));
   sqlite.close();
   await fs.writeFile(path.join(root, "qdrant.json"), "[]");
@@ -57,6 +57,19 @@ test("current backup verification requires and includes balance screenshots", as
   assert.equal(await fs.readFile(path.join(root, "balance-screenshots", "balance.png"), "utf8"), "screenshot");
   await fs.rm(path.join(root, "balance-screenshots"), { recursive: true });
   await assert.rejects(() => verifyBackup(root), (error: any) => error.code === "BACKUP_CHECKSUM_FAILED" && error.details.includes("balance-screenshots"));
+});
+
+test("current backup verification rejects persistent authentication sessions", async () => {
+  await fixture();
+  const sqlite = new DatabaseSync(path.join(root, "lifeos.sqlite"));
+  sqlite.prepare("INSERT INTO auth_sessions (id) VALUES (?)").run("must-not-transfer");
+  sqlite.close();
+  const bytes = await fs.readFile(path.join(root, "lifeos.sqlite"));
+  const manifest = JSON.parse(await fs.readFile(path.join(root, "manifest.json"), "utf8"));
+  const entry = manifest.files.find((file: any) => file.path === "lifeos.sqlite");
+  Object.assign(entry, { size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
+  await fs.writeFile(path.join(root, "manifest.json"), JSON.stringify(manifest));
+  await assert.rejects(() => verifyBackup(root), (error: any) => error.code === "BACKUP_SQLITE_INVALID" && error.details.some((detail: string) => detail.includes("authentication sessions")));
 });
 
 test("restore rolls back every live file after a simulated activation failure", async () => {

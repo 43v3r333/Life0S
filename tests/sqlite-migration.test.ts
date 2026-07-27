@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { initializeSqlite, loadPersistentSessions, savePersistentSession, sessionTokenHash, sqliteStorageStatus, verifySqliteState, writeSqliteState } from "../server/sqliteStore.js";
+import { DatabaseSync } from "node:sqlite";
+import { createSqliteSnapshot, initializeSqlite, loadPersistentSessions, savePersistentSession, sessionTokenHash, sqliteStorageStatus, verifySqliteState, writeSqliteState } from "../server/sqliteStore.js";
 
 test("JSON migrates to verified SQLite and sessions survive reload reads", async () => {
   const directory = path.resolve(process.cwd(), ".test-data", "migration-fixture");
@@ -22,6 +23,12 @@ test("JSON migrates to verified SQLite and sessions survive reload reads", async
   assert.equal(sqliteStorageStatus().authoritative, true);
   assert.equal(verifySqliteState(source).ok, true);
   savePersistentSession({ id: "session-1", tokenHash: sessionTokenHash("secret"), createdAt: Date.now(), expiresAt: Date.now() + 60_000, ipAddress: "127.0.0.1", userAgent: "test" });
+  assert.equal(loadPersistentSessions()[0]?.id, "session-1");
+  const backupSnapshot = path.join(directory, "sanitized-backup.sqlite");
+  createSqliteSnapshot(backupSnapshot, { excludeSessions: true });
+  const snapshot = new DatabaseSync(backupSnapshot, { readOnly: true });
+  assert.equal(Number((snapshot.prepare("SELECT COUNT(*) count FROM auth_sessions").get() as any).count), 0);
+  snapshot.close();
   assert.equal(loadPersistentSessions()[0]?.id, "session-1");
   loaded.bankAccounts[0].balance = 1300.25;
   writeSqliteState(loaded);
