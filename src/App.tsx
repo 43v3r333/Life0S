@@ -15,6 +15,7 @@ const DashboardView = lazy(() => import("./components/DashboardView"));
 const ExecutivePlannerView = lazy(() => import("./components/ExecutivePlannerView"));
 const PlannerCalendarView = lazy(() => import("./components/PlannerCalendarView"));
 const PersonalOperationsView = lazy(() => import("./components/PersonalOperationsView"));
+const SchoolView = lazy(() => import("./components/SchoolView"));
 const WorkView = lazy(() => import("./components/WorkView"));
 const AiChatView = lazy(() => import("./components/AiChatView"));
 const MemoryCenterView = lazy(() => import("./components/MemoryCenterView"));
@@ -309,6 +310,8 @@ export default function App() {
             {activeTab === "operations" && (
               <PersonalOperationsView onActivity={addSignalREvent} />
             )}
+
+            {activeTab === "school" && <SchoolView onActivity={addSignalREvent} onNavigate={(tab)=>navigateTo(tab as LifeOsPage)} />}
 
             {activeTab === "work" && <WorkView onActivity={addSignalREvent} onNavigate={(tab)=>navigateTo(tab as LifeOsPage)} />}
 

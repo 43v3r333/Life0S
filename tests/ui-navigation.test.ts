@@ -8,8 +8,9 @@ const installWindow=(address:string)=>{
   return ()=>current;
 };
 
-test("active LifeOS navigation contains seven primary and three System destinations",()=>{
-  assert.equal(navigation.filter(item=>item.group==="primary").length,7);
+test("active LifeOS navigation contains eight primary and three System destinations",()=>{
+  assert.equal(navigation.filter(item=>item.group==="primary").length,8);
+  assert.ok(navigation.some(item=>item.id==="school"&&item.group==="primary"));
   assert.deepEqual(navigation.filter(item=>item.group==="system").map(item=>item.id),["automation","vault","settings"]);
 });
 

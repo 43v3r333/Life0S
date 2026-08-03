@@ -1,6 +1,6 @@
-import { BellRing, Brain, BriefcaseBusiness, Clock, Compass, Key, Layers, MessageSquare, Settings, WalletCards } from "lucide-react";
+import { BellRing, Brain, BriefcaseBusiness, Clock, Compass, GraduationCap, Key, Layers, MessageSquare, Settings, WalletCards } from "lucide-react";
 
-export type LifeOsPage = "dashboard"|"executive_planner"|"planner"|"operations"|"work"|"chat"|"memory"|"automation"|"vault"|"settings";
+export type LifeOsPage = "dashboard"|"executive_planner"|"planner"|"operations"|"school"|"work"|"chat"|"memory"|"automation"|"vault"|"settings";
 export type NavigationDestination = { id:LifeOsPage; label:string; shortLabel:string; description:string; icon:typeof Layers; group:"primary"|"system" };
 
 export const navigation:NavigationDestination[]=[
@@ -8,6 +8,7 @@ export const navigation:NavigationDestination[]=[
  {id:"executive_planner",label:"Plan",shortLabel:"Plan",description:"Goals and tasks",icon:Compass,group:"primary"},
  {id:"planner",label:"Daily",shortLabel:"Daily",description:"Logs and routines",icon:Clock,group:"primary"},
  {id:"operations",label:"Finance",shortLabel:"Finance",description:"Money and statements",icon:WalletCards,group:"primary"},
+ {id:"school",label:"School",shortLabel:"School",description:"Classes and coursework",icon:GraduationCap,group:"primary"},
  {id:"work",label:"Work",shortLabel:"Work",description:"Shifts and business",icon:BriefcaseBusiness,group:"primary"},
  {id:"chat",label:"Assistant",shortLabel:"AI",description:"Grounded LifeOS AI",icon:MessageSquare,group:"primary"},
  {id:"memory",label:"Memory",shortLabel:"Memory",description:"Facts and decisions",icon:Brain,group:"primary"},
