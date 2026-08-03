@@ -143,10 +143,19 @@ export interface DbState {
   aiFinanceBriefings?: any[];
   operationAudit?: AuditEvent[];
   onboarding?: Record<string, any>;
+  knowledgeAnalysisQueue?: any[];
+  knowledgeAnalysisRuns?: any[];
+  knowledgeClaims?: any[];
+  knowledgeEvidence?: any[];
+  knowledgeFeedback?: any[];
+  knowledgeMetrics?: Record<string, any>;
+  knowledgeCheckpoints?: Record<string, string>;
+  knowledgeSettings?: Record<string, any>;
 }
 
 let dbCache: DbState | null = null;
 let writePromise: Promise<void> = Promise.resolve();
+const saveObservers = new Set<() => void | Promise<void>>();
 
 export function toPersistedState(state: DbState): DbState {
   return {
@@ -195,6 +204,14 @@ export async function initDb(initialState: DbState): Promise<DbState> {
         dbCache.aiFinanceBriefings = dbCache.aiFinanceBriefings || [];
         dbCache.operationAudit = dbCache.operationAudit || [];
         dbCache.onboarding = dbCache.onboarding || {};
+        dbCache.knowledgeAnalysisQueue = dbCache.knowledgeAnalysisQueue || [];
+        dbCache.knowledgeAnalysisRuns = dbCache.knowledgeAnalysisRuns || [];
+        dbCache.knowledgeClaims = dbCache.knowledgeClaims || [];
+        dbCache.knowledgeEvidence = dbCache.knowledgeEvidence || [];
+        dbCache.knowledgeFeedback = dbCache.knowledgeFeedback || [];
+        dbCache.knowledgeMetrics = dbCache.knowledgeMetrics || {};
+        dbCache.knowledgeCheckpoints = dbCache.knowledgeCheckpoints || {};
+        dbCache.knowledgeSettings = dbCache.knowledgeSettings || {};
       }
     } catch (err) {
       console.error("[DB] SQLite initialization or verification failed:", err);
@@ -218,7 +235,10 @@ export async function saveDb(): Promise<void> {
     writeSqliteState(persistedState);
   });
   await writePromise;
+  for (const observer of saveObservers) queueMicrotask(() => { Promise.resolve(observer()).catch(error => console.error("[DB] Save observer failed:", error)); });
 }
+
+export function observeDatabaseSaves(observer: () => void | Promise<void>) { saveObservers.add(observer); return () => saveObservers.delete(observer); }
 
 export function getStorageStatus() { return sqliteStorageStatus(); }
 export function verifyStorage() { if (!dbCache) throw new Error("Database not initialized."); return verifySqliteState(toPersistedState(dbCache)); }

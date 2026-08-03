@@ -18,7 +18,7 @@ const PersonalOperationsView = lazy(() => import("./components/PersonalOperation
 const SchoolView = lazy(() => import("./components/SchoolView"));
 const WorkView = lazy(() => import("./components/WorkView"));
 const AiChatView = lazy(() => import("./components/AiChatView"));
-const MemoryCenterView = lazy(() => import("./components/MemoryCenterView"));
+const KnowledgeView = lazy(() => import("./components/KnowledgeView"));
 const VaultView = lazy(() => import("./components/VaultView"));
 const SettingsView = lazy(() => import("./components/SettingsView"));
 const AutomationView = lazy(() => import("./components/AutomationView"));
@@ -337,7 +337,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === "memory" && <MemoryCenterView onActivity={addSignalREvent} />}
+            {activeTab === "memory" && <KnowledgeView onActivity={addSignalREvent} />}
 
             {/* VIEW 4: SECRET VAULT */}
             {activeTab === "vault" && <VaultView />}

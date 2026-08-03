@@ -40,7 +40,7 @@ Production startup fails closed unless `APP_URL`, `LIFEOS_DATA_DIR`, `LIFEOS_AUT
 
 AI answers use current LifeOS records first, relevant confirmed memories second, and recent conversation context last. Source labels and timestamps are attached to grounded responses. Newer authoritative records suppress stale linked memories. Every proposed write requires approval. When NVIDIA or another configured provider is unavailable, deterministic local calculations remain available and are labelled as fallback output.
 
-The Memory screen includes provider diagnostics, domain coverage, stale-memory exclusions, conflicts, and pending proposed actions.
+The Knowledge workspace retains the legacy `memory` page identifier and memory APIs while adding continuous event analysis, a nightly 02:30 Africa/Johannesburg review, evidence-backed claims, a relationship graph, finance intelligence, run history, guarded proposals, and privacy controls. Learning updates local retrieval and confidence, not foundation-model weights. Provider payloads always exclude vault values, credentials, authentication sessions, raw binaries, and unrelated domains.
 
 ## Private mobile access
 

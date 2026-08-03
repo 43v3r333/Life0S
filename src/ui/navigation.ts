@@ -11,7 +11,7 @@ export const navigation:NavigationDestination[]=[
  {id:"school",label:"School",shortLabel:"School",description:"Classes and coursework",icon:GraduationCap,group:"primary"},
  {id:"work",label:"Work",shortLabel:"Work",description:"Shifts and business",icon:BriefcaseBusiness,group:"primary"},
  {id:"chat",label:"Assistant",shortLabel:"AI",description:"Grounded LifeOS AI",icon:MessageSquare,group:"primary"},
- {id:"memory",label:"Memory",shortLabel:"Memory",description:"Facts and decisions",icon:Brain,group:"primary"},
+ {id:"memory",label:"Knowledge",shortLabel:"Knowledge",description:"AI learning and evidence",icon:Brain,group:"primary"},
  {id:"automation",label:"Automation",shortLabel:"Automate",description:"Briefings and reminders",icon:BellRing,group:"system"},
  {id:"vault",label:"Connections",shortLabel:"Connect",description:"AI and integrations",icon:Key,group:"system"},
  {id:"settings",label:"Preferences",shortLabel:"Settings",description:"System and privacy",icon:Settings,group:"system"}

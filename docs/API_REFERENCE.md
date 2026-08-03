@@ -238,6 +238,16 @@ Authentication endpoints used by private web and ngrok access:
 | POST | `/api/ai/actions/refresh` | Regenerate grounded action proposals from current LifeOS state. |
 | POST | `/api/ai/actions/propose` | Create an explicitly reviewable AI action proposal. |
 | GET | `/api/ai/context-map` | Inspect authoritative AI coverage and page-aware prompt context; accepts an optional `workspace` query. |
+| GET | `/api/ai/knowledge/overview` | Return knowledge health, finance intelligence, queue depth, learning metrics, and recent runs. |
+| GET | `/api/ai/knowledge/graph` | Return the evidence-backed relationship graph; accepts an optional `domain` filter. |
+| GET | `/api/ai/knowledge/runs` | List durable targeted, nightly, catch-up, and manual analysis runs. |
+| GET | `/api/ai/knowledge/claims` | List claims with truth status, confidence, provenance, and supersession data. |
+| GET | `/api/ai/knowledge/proposals` | List guarded AI proposals awaiting an explicit decision. |
+| GET | `/api/ai/knowledge/settings` | Return continuous-analysis privacy, schedule, domain, budget, and retention controls. |
+| PATCH | `/api/ai/knowledge/settings` | Update guarded analysis controls without exposing provider credentials. |
+| POST | `/api/ai/knowledge/analyze` | Queue and begin an idempotent guarded analysis for selected domains. |
+| POST | `/api/ai/knowledge/feedback` | Record feedback for local confidence calibration. |
+| PATCH | `/api/ai/knowledge/proposals/:id` | Approve or reject a proposal; unsupported domain mutations remain unapplied. |
 | GET | `/api/ai/integration-briefing` | Return cross-domain AI coverage, attention totals, safety policy and the current recommended action. |
 | GET | `/api/personal/daily-state` | Return an authoritative dated daily timeline; accepts a `date=YYYY-MM-DD` query. |
 | GET | `/api/personal/day-plan` | Return a gap-free 1,440-minute sleep-, shift-, health-, study-, task-, and relaxation-aware plan for a date. |

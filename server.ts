@@ -9,7 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
-import { initDb, saveDb, Goal, getStorageStatus, toPersistedState, verifyStorage } from "./server/db.js";
+import { initDb, saveDb, Goal, getStorageStatus, toPersistedState, verifyStorage, observeDatabaseSaves } from "./server/db.js";
 import { createSqliteSnapshot, deletePersistentSession, loadPersistentSessions, savePersistentSession, sessionTokenHash } from "./server/sqliteStore.js";
 import { createSafeVaultState, loadRuntimeConfiguration, toVaultStatus, validateRuntimeConfiguration } from "./server/config.js";
 import { cacheStore } from "./server/cache.js";
@@ -41,6 +41,7 @@ import { DEFAULT_AUTOMATION_RULES, registerDailyAutomationRoutes, shiftWindows }
 import { registerGoogleBusinessRoutes } from "./server/googleBusiness.js";
 import { registerCareerRoutes } from "./server/career.js";
 import { registerCodeLearningRoutes } from "./server/codeLearning.js";
+import { createKnowledgeEngine, registerKnowledgeRoutes } from "./server/knowledgeEngine.js";
 import { lifeOsDataDirectory, lifeOsDataPath } from "./server/dataPaths.js";
 import { localOcrCapability, unsupportedImageReason } from "./server/ocrSupport.js";
 
@@ -1141,6 +1142,18 @@ async function startServer() {
     state.operationAudit = [record, ...(state.operationAudit || [])].slice(0, 500);
     return record;
   };
+  const knowledgeProviderKey = state.vault.nvidiaKey || process.env.NVIDIA_API_KEY;
+  const knowledgeProvider = knowledgeProviderKey ? async (request: { domains: string[]; records: Record<string, unknown>; purpose: string }) => {
+    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${knowledgeProviderKey}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(45_000), body: JSON.stringify({ model: process.env.NVIDIA_MODEL || "nvidia/nemotron-3-super-120b-a12b", messages: [{ role: "system", content: "Analyze private LifeOS structured records. Return JSON only: {claims:[{content,domain,claimType,confidence,evidenceRefs}],proposals:[{dedupeKey,type,title,explanation,payload,evidenceRefs,confidence,impact,rollback}]}. Never invent facts. Never change financial facts without explicit approval. AI inference is never authoritative. Prefer findings and knowledge_claim proposals. Do not echo secrets." }, { role: "user", content: JSON.stringify(request) }], temperature: .1, max_tokens: 2400, stream: false }) });
+    const raw: any = await response.json();
+    if (!response.ok) throw new Error(raw?.error?.message || "Knowledge provider analysis failed.");
+    const result = parseProviderJson<{ claims?: Array<Record<string, unknown>>; proposals?: Array<Record<string, unknown>> }>(raw?.choices?.[0]?.message?.content, []);
+    return { ...result, usage: { inputTokens: Number(raw?.usage?.prompt_tokens || 0), outputTokens: Number(raw?.usage?.completion_tokens || 0) } };
+  } : undefined;
+  const knowledgeEngine = createKnowledgeEngine({ state, save: saveDb, audit: auditOperation, provider: knowledgeProvider });
+  registerKnowledgeRoutes(app, { engine: knowledgeEngine, state, save: saveDb, audit: auditOperation });
+  observeDatabaseSaves(() => knowledgeEngine.observe());
+  await knowledgeEngine.start();
   registerCareerRoutes(app, { state, saveState: saveDb, audit: auditOperation, dataDirectory: secretsDirectory });
   registerCodeLearningRoutes(app, { state, saveState: saveDb, audit: auditOperation });
 
