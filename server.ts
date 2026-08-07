@@ -42,6 +42,7 @@ import { registerGoogleBusinessRoutes } from "./server/googleBusiness.js";
 import { registerCareerRoutes } from "./server/career.js";
 import { registerCodeLearningRoutes } from "./server/codeLearning.js";
 import { createKnowledgeEngine, registerKnowledgeRoutes } from "./server/knowledgeEngine.js";
+import { buildLocalAssistantFallback, safeProviderError } from "./server/aiFallback.js";
 import { lifeOsDataDirectory, lifeOsDataPath } from "./server/dataPaths.js";
 import { localOcrCapability, unsupportedImageReason } from "./server/ocrSupport.js";
 
@@ -2933,8 +2934,9 @@ async function startServer() {
     }
 
     const providerStartedAt = Date.now();
+    let conversation: any = null;
     try {
-      let conversation = conversationId ? (state.aiConversations || []).find((item: any) => item.id === conversationId && !item.deletedAt) : null;
+      conversation = conversationId ? (state.aiConversations || []).find((item: any) => item.id === conversationId && !item.deletedAt) : null;
       if (!conversation) { const now = new Date().toISOString(); conversation = { id: randomUUID(), title: String(messages.at(-1)?.content || "New conversation").trim().slice(0, 60), status: "active", sensitivity: "private", messages: [], createdAt: now, updatedAt: now }; state.aiConversations.push(conversation); }
       const latestIncoming = messages.at(-1);
       if (latestIncoming?.role !== "assistant" && !(conversation.messages || []).some((item: any) => item.clientId === latestIncoming.id)) conversation.messages.push({ id: randomUUID(), clientId: latestIncoming.id || null, role: "user", content: String(latestIncoming.content || "").slice(0, 12000), createdAt: new Date().toISOString() });
@@ -3101,10 +3103,13 @@ Gabriel Strategic Synthesizer:`;
       }
     } catch (err: any) {
       console.error("LifeOS AI API Error:", err);
-      auditOperation("ai_provider_failed", { latencyMs: Date.now() - providerStartedAt, reason: String(err.message || "provider failure").slice(0, 300), contextStored: false });
-      state.aiRequestDiagnostics=[...(state.aiRequestDiagnostics||[]),{id:randomUUID(),provider:"configured-provider",model:null,latencyMs:Date.now()-providerStartedAt,fallbackReason:String(err.message||"provider failure").slice(0,300),contextTimestamp:new Date().toISOString(),sourceCount:0,excludedStaleRecords:0,proposalValidation:"not-run",status:"failed",createdAt:new Date().toISOString()}].slice(-500);
+      const reason = safeProviderError(err);
+      auditOperation("ai_provider_failed", { latencyMs: Date.now() - providerStartedAt, reason, contextStored: false });
+      state.aiRequestDiagnostics=[...(state.aiRequestDiagnostics||[]),{id:randomUUID(),provider:"configured-provider",model:null,latencyMs:Date.now()-providerStartedAt,fallbackReason:reason,contextTimestamp:new Date().toISOString(),sourceCount:0,excludedStaleRecords:0,proposalValidation:"fallback-returned",status:"failed",createdAt:new Date().toISOString()}].slice(-500);
+      const fallback = buildLocalAssistantFallback(state, personalProfile.name, reason);
+      if (conversation) { conversation.messages.push({ id: randomUUID(), role: "assistant", content: fallback.content, provider: fallback.provider, model: null, provenance: { fallbackReason: reason, rawPromptsStored: false }, createdAt: new Date().toISOString() }); conversation.updatedAt = new Date().toISOString(); }
       await saveDb().catch(() => undefined);
-      res.status(502).json({ error: { code: "AI_PROVIDER_FAILED", message: err.message || "The configured AI provider was unavailable.", fieldErrors: [], recovery: "Your LifeOS data was not changed. Retry or use deterministic dashboards and calculations." } });
+      res.json({ ...fallback, conversationId: conversation?.id || conversationId || null, groundedAt: new Date().toISOString(), evidence: [] });
     }
   });
 
