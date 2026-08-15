@@ -10,6 +10,7 @@ import { DesktopSidebar, MobileNavigation } from "./components/AppNavigation";
 import { navigation, pageFromUrl, updatePageUrl, type LifeOsPage } from "./ui/navigation";
 import { Dialog } from "./ui/primitives";
 import { FeedbackHost } from "./ui/feedback";
+import { apiErrorMessage } from "./ui/apiError";
 
 const DashboardView = lazy(() => import("./components/DashboardView"));
 const ExecutivePlannerView = lazy(() => import("./components/ExecutivePlannerView"));
@@ -208,7 +209,7 @@ export default function App() {
         })
       });
 
-      if (!res.ok) { const result = await res.json().catch(() => ({})); throw new Error(result.error || "The LifeOS assistant request failed."); }
+      if (!res.ok) { const result = await res.json().catch(() => ({})); throw new Error(apiErrorMessage(result, "The LifeOS assistant request failed.")); }
 
       const data = await res.json();
       
