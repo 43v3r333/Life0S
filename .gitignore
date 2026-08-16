@@ -27,3 +27,4 @@ lifeos-backup-*/
 tmp/
 My_LifeOS_Discovery_Workbook.xlsx
 work/
+.orca/worktrees/
