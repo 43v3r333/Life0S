@@ -37,7 +37,7 @@ Key API Groups:
 - **Personal Data**: `/api/personal/*` (overview, finance entries, work shifts)
 - **AI Features**: `/api/ai/*` (memories, actions, decisions, conversations, diagnostics)
 - **Integrations**: Google Workspace, GitHub (via encrypted vault tokens)
-- **System**: `/api/system/*` (health, storage, backups, audit)
+- **System**: `/api/system/*` (health, storage, backups, audit) including `/api/system/ping` for health checks
 - **Business**: `/api/business/*` (codebase guide, code learning, career)
 
 ## Database Migration State
