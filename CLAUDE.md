@@ -8,6 +8,14 @@
 - **Startup Validation**: Requires APP_URL, LIFEOS_DATA_DIR, and LIFEOS_AUTH_REQUIRED=true before write operations
 - **Healthy Startup**: Read-only with respect to authoritative records; migrations handled via initDb with verification/rollback
 
+### Security Audit Findings (2026-08-19)
+- Database transactions properly use BEGIN IMMEDIATE with try/catch/ROLLBACK for error handling
+- All SQL queries use prepared statements to prevent SQL injection
+- Vault credentials are never logged in console output or error messages
+- API routes include input validation and proper error handling without leaking sensitive information
+- Database indexes exist on frequently queried fields (dates, lifecycle status, fingerprints)
+- Write operations are serialized to prevent concurrent modification conflicts
+
 ### Security Requirements
 - Environment variables for secrets: LIFEOS_VAULT_SECRET (min 32 chars), provider API keys
 - Authentication: Persistent HttpOnly session via /api/auth/login when LIFEOS_AUTH_REQUIRED=true
