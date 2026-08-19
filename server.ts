@@ -30,6 +30,7 @@ import { REQUIRED_BACKUP_ARTIFACTS, verifyBackup } from "./server/backupVerifica
 import { restoreBundleAtomically } from "./server/backupRestore.js";
 import { parseProviderJson } from "./server/validation.js";
 import { createBusinessRouter } from "./server/routes/businessRoutes.js";
+import { createSemanticaRouter } from "./server/routes/semanticaRoutes.js";
 import { buildCodebaseGuide } from "./server/codebaseService.js";
 import { buildAiContextRegistry, workspaceAiContext } from "./server/aiContextRegistry.js";
 import { createNextOccurrence, dependencyState, hasDependencyCycle } from "./server/taskAutomation.js";
@@ -347,6 +348,8 @@ async function startServer() {
   }));
   app.use("/api/search", createSearchRouter(() => state));
   app.use("/api/business", createBusinessRouter(() => state, process.cwd()));
+  app.use("/api/semantic", createSemanticaRouter(() => state));
+  app.use("/api/semantic", createSemanticaRouter(() => state));
 
   // These versioned enterprise endpoints previously returned fabricated demo
   // telemetry. Keep their route contract explicit without presenting invented

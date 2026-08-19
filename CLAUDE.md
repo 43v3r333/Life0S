@@ -16,6 +16,17 @@
 - Database indexes exist on frequently queried fields (dates, lifecycle status, fingerprints)
 - Write operations are serialized to prevent concurrent modification conflicts
 
+### Semantica Integration (2026-08-19)
+- Added Semantica knowledge engineering framework as a Python backend service
+- Created TypeScript wrapper service for spawning and communicating with Semantica subprocess
+- Built REST API endpoints under /api/semantic for:
+  - Triple extraction from text (POST /extract)
+  - Knowledge graph search (GET /search)
+  - Adding triples to knowledge graph (POST /triples)
+  - Retrieving knowledge graph statistics (GET /stats)
+  - Health check (GET /health)
+- Service gracefully degrades to fallback responses when Semantica dependencies unavailable
+
 ### Security Requirements
 - Environment variables for secrets: LIFEOS_VAULT_SECRET (min 32 chars), provider API keys
 - Authentication: Persistent HttpOnly session via /api/auth/login when LIFEOS_AUTH_REQUIRED=true
