@@ -6,7 +6,8 @@
       "Bash(git add *)",
       "Bash(git check-ignore *)",
       "Bash(git commit *)",
-      "Bash(./sync-worktrees.sh)"
+      "Bash(./sync-worktrees.sh)",
+      "Bash(git checkout *)"
     ]
   }
 }
