@@ -28,3 +28,5 @@ tmp/
 My_LifeOS_Discovery_Workbook.xlsx
 work/
 .orca/worktrees/
+.foglamp/
+CLAUDE.md
