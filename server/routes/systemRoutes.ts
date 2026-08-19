@@ -15,5 +15,6 @@ export function createSystemRouter(dependencies: Dependencies) {
   router.post("/storage-verify", (_req, res, next) => { try { const result = dependencies.verify(); res.status(result.ok ? 200 : 409).json(result); } catch (error) { next(error); } });
   router.get("/integrity", async (_req, res, next) => { try { const result = await dependencies.integrity(); res.status(result.ok ? 200 : 409).json(result); } catch (error) { next(error); } });
   router.get("/audit", (req, res, next) => { try { res.json(dependencies.audit(Math.max(1, Math.min(500, Number(req.query.limit) || 100)))); } catch (error) { next(error); } });
+  router.get("/ping", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
   return router;
 }

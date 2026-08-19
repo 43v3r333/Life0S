@@ -305,6 +305,7 @@ Authentication endpoints used by private web and ngrok access:
 | POST | `/api/system/storage-verify` | Reconcile table counts, balances, debt totals, and finance totals against authoritative application state. |
 | GET | `/api/system/integrity` | Run SQLite integrity checks and report database size, upload checksums, backup recency, and failed-operation counts. |
 | GET | `/api/system/audit` | Return bounded persisted operational audit events; optional `limit` is capped at 500. |
+| GET | `/api/system/ping` | Lightweight liveness check returning status and timestamp. |
 | GET | `/api/personal/finance/accounts/:id/balance-history` | Return source-labelled authoritative balance history for a debit or credit account. |
 | GET | `/api/ai/diagnostics/requests` | Return bounded provider-request diagnostics without prompts or sensitive records. |
 | GET | `/api/preferences` | Return server-persisted non-sensitive preferences. |

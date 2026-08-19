@@ -1,0 +1,27 @@
+{
+  "project": "Life0S",
+  "worktree_root": ".orca/worktrees",
+  "max_concurrent_agents": 2,
+  "agents": {
+    "claude": {
+      "command": "wsl.exe",
+      "args": ["-d", "Ubuntu", "--", "/home/p3rc/.local/bin/claude"],
+      "isolation": "worktree"
+    },
+    "antigravity": {
+      "command": "wsl.exe",
+      "args": ["-d", "Ubuntu", "--", "/home/p3rc/.local/bin/antigravity"],
+      "isolation": "worktree"
+    },
+    "hermes": {
+      "command": "wsl.exe",
+      "args": ["-d", "Ubuntu", "--", "/home/p3rc/.local/bin/hermes"],
+      "isolation": "worktree"
+    },
+    "mimo": {
+      "command": "wsl.exe",
+      "args": ["-d", "Ubuntu", "--", "/home/p3rc/.local/bin/mimo"],
+      "isolation": "worktree"
+    }
+  }
+}

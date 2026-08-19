@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(curl *)",
+      "Bash(git add *)",
+      "Bash(git check-ignore *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
